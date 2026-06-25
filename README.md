@@ -14,6 +14,7 @@
 ## Architecture
 
 - Agent instructions: [AGENTS.md](AGENTS.md)
+- Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Architecture notes: [docs/architecture.md](docs/architecture.md)
 - API docs: [docs/api.md](docs/api.md)
 
