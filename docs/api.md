@@ -87,6 +87,16 @@ player
 | `training-data-web` | `GET` | `/health` | 否 | 训练数据模块健康检查 |
 | `training-data-web` | `GET` | `/module-info` | 否 | 训练数据模块信息 |
 | `training-data-codeforces` | `POST` | `/api/training-data/admin/ods/codeforces/submissions:batch-upsert` | `admin` | 批量写入 Codeforces submission ODS |
+| `training-data-codeforces` | `POST` | `/api/training-data/admin/codeforces/submissions:collect` | `admin` | 管理员按 `studentIdentity` 采集最近 N 小时 Codeforces submission 并写入 ODS |
+| `training-data-codeforces` | `POST` | `/api/training-data/admin/codeforces/handles` | `admin` | 管理员创建 `studentIdentity + Codeforces handle` 绑定 |
+| `training-data-codeforces` | `POST` | `/api/training-data/admin/codeforces/warehouse:refresh` | `admin` | 管理员同步刷新 Codeforces DWD/DWM/DWS SQL task DAG |
+| `training-data-codeforces` | `GET` | `/api/training-data/codeforces/handles?studentIdentity=...` | 否 | 游客按 `studentIdentity` 查询 Codeforces handle |
+| `training-data-codeforces` | `GET` | `/api/training-data/codeforces/accepted-summary` | 否 | 游客按 `studentIdentity` 查询 Codeforces 区间 rating AC 汇总 |
+| `training-data-codeforces` | `GET` | `/api/training-data/codeforces/submissions/by-student` | 否 | 游客按 `studentIdentity` 查询 Codeforces 提交明细 |
+| `training-data-codeforces` | `GET` | `/api/training-data/codeforces/submissions/by-problem` | 否 | 游客按 `problemKey` 查询 Codeforces 提交明细 |
+| `training-data-codeforces` | `GET` | `/api/training-data/codeforces/first-accepted/by-student` | 否 | 游客按 `studentIdentity` 查询 Codeforces 首 AC 题目明细 |
+| `training-data-codeforces` | `GET` | `/api/training-data/codeforces/first-accepted/by-problem` | 否 | 游客按 `problemKey` 查询 Codeforces 首 AC handle 列表 |
+| `training-data-codeforces` | `PATCH` | `/api/training-data/admin/codeforces/handles:change-identity` | `admin` | 管理员迁移 CF handle 绑定的 `studentIdentity`，不修改 handle |
 
 ## GET /health
 
@@ -143,12 +153,15 @@ GET /health
   "service": "training-data-web",
   "features": [
     "oj-warehouse-modules",
-    "codeforces-ods-submission"
+    "codeforces-ods-submission",
+    "codeforces-handle-account",
+    "codeforces-warehouse-refresh",
+    "codeforces-submission-collector"
   ]
 }
 ```
 
-`training-data-web` 启动时也会应用内部 Codeforces ODS/DWD/DWM/DWS 表迁移。DWD/DWM/DWS 转换目前以 `training-data-codeforces` 内的 SQL 任务资源表示，尚未实现 Java SQL-task 执行器或公开 HTTP refresh 入口。
+`training-data-web` 启动时也会应用内部 Codeforces ODS/DWD/DWM/DWS 表迁移和 `codeforces_handle_account` 表迁移。DWD/DWM/DWS 转换以 `training-data-codeforces` 内的 SQL 任务资源表示，并由 admin refresh 接口同步触发。
 
 ## POST /api/auth/login
 
@@ -366,7 +379,7 @@ Content-Type: application/json
 
 后端会生成 `batchId` / `fetchedAt`，按每条 submission 计算 `rawPayload` 和 `payloadHash`，然后幂等写入 `ods_codeforces__submission`。
 
-下游 DWD/DWM/DWS 转换目前不是 HTTP API。它们以模块资源中的幂等 SQL 任务文件存在，后续 Java 调度只需要按固定顺序触发这些 SQL。
+下游 DWD/DWM/DWS 转换通过 admin refresh 接口触发。该接口按 YAML manifest 建 DAG，每次请求都会重新读取 manifest、重建图并检查 DAG，再按拓扑顺序执行 SQL。
 
 ### 请求
 
@@ -417,9 +430,345 @@ Content-Type: application/json
 }
 ```
 
+## POST /api/training-data/admin/codeforces/submissions:collect
+
+管理员按 `studentIdentity` 从 Codeforces `user.status` 采集最近 N 小时 submission，并写入 `ods_codeforces__submission`。接口不接受外部传入的 Codeforces handle 或结束时间；服务先用 `studentIdentity` 查 `codeforces_handle_account` 绑定的 handle，再以当前 instant 作为右边界，按 `lookbackHours` 回推左边界。
+
+后台自动任务默认从 `codeforces_handle_account` 读取所有已绑定 handle，并在采集前去重。后续如果增加“不再爬取该用户”的字段，应由 handle-account 读取路径统一处理，而不是改 HTTP controller。
+
+每次 Codeforces 分页请求默认使用 `connect-timeout=10s`、`read-timeout=30s`，并最多尝试 `max-request-attempts=3` 次。HTTP 单 identity 采集只解析出一个 handle；如果该 handle 的分页请求重试耗尽，本次采集返回 `FAILED`，记录带稳定 `errorCode` 的日志，并在响应的 `handles` 中返回失败状态。定时批量采集遇到单个 handle 失败时会继续处理后续 handle。ODS 写入后当前只保留后续调度调用的 TODO，不触发未完成的调度逻辑。
+
+后台自动任务由 `application.yml` 的 `platform.training-data.codeforces.collector.schedules` 列表驱动，默认配置一个关闭状态的 `daily-recent-submissions`。将该调度项的 `enabled` 改为 `true` 后，默认每天 `Asia/Shanghai` 12:00 调用同一采集用例，采集执行时刻往前 `120h` 的滚动窗口。
+
+### 请求
+
+```http
+POST /api/training-data/admin/codeforces/submissions:collect
+Authorization: Bearer <admin_access_token>
+Content-Type: application/json
+
+{
+  "studentIdentity": "112487张三",
+  "lookbackHours": 120
+}
+```
+
+`studentIdentity` 必须是已绑定 Codeforces handle 的平台业务身份，`lookbackHours` 必须是正整数。实际窗口由服务计算为 `[now - lookbackHours, now)`，并和 Codeforces submission 的 `creationTimeSeconds` 比较。响应中的 `windowStartInclusive` 和 `windowEndExclusive` 是本次运行计算出的窗口。
+
+### 响应
+
+```json
+{
+  "status": "SUCCESS",
+  "windowStartInclusive": "2026-06-30T04:00:00Z",
+  "windowEndExclusive": "2026-07-05T04:00:00Z",
+  "requestedHandleCount": 1,
+  "succeededHandleCount": 1,
+  "failedHandleCount": 0,
+  "fetchedSubmissionCount": 2,
+  "matchedSubmissionCount": 1,
+  "batchId": "collector-codeforces-1783252800000-...",
+  "tableName": "ods_codeforces__submission",
+  "writtenRows": 1,
+  "fetchedAt": "2026-07-05T04:00:00Z",
+  "message": null,
+  "handles": [
+    {
+      "handle": "alice",
+      "status": "SUCCESS",
+      "fetchedSubmissionCount": 2,
+      "matchedSubmissionCount": 1,
+      "errorCode": null,
+      "message": null
+    }
+  ]
+}
+```
+
+HTTP 单 identity 采集的整体 `status` 可能是 `SUCCESS`、`FAILED` 或 `SKIPPED`。当没有命中 submission 或本 JVM 内已有采集正在运行时，`batchId` 为 `null` 且 `writtenRows` 为 `0`，`message` 说明原因。`studentIdentity` 未绑定 Codeforces handle 时返回 handle-account 的 `404` 错误。
+
+## POST /api/training-data/admin/codeforces/warehouse:refresh
+
+管理员同步刷新 Codeforces DWD/DWM/DWS。请求传入 `batchId`；服务先用该 batch 覆盖的 UTC+8 日期闭区间刷新上层表。若首 AC 事实移动到原区间之外，服务会把有效刷新区间扩大到受影响首 AC 日期的最小/最大边界，并自动重跑同一 SQL task DAG，直到区间稳定。若 ODS 中没有匹配该 `batchId` 且带 `creationTimeSeconds` 的提交，服务返回 `400`，不会启动 SQL task。
+
+执行器会读取 `sql/tasks/codeforces-warehouse-refresh.yml`，构建并校验 DAG。当前任务顺序是：
+
+```text
+codeforces.dwd.submission
+ -> codeforces.dwm.handle_problem_first_accepted
+ -> codeforces.dws.handle_daily_rating_accepted_summary
+```
+
+每个节点一个事务。节点失败后，DAG 立即停止，失败节点之后的执行计划节点标记为 `SKIPPED`，日志包含稳定 `errorCode=SQL_TASK_SQL_EXECUTION_FAILED`。
+
+### 请求
+
+```http
+POST /api/training-data/admin/codeforces/warehouse:refresh
+Authorization: Bearer <admin_access_token>
+Content-Type: application/json
+
+{
+  "batchId": "external-codeforces-1782554400000-...",
+  "startFromTaskId": "codeforces.dwm.handle_problem_first_accepted"
+}
+```
+
+`startFromTaskId` 可选。用于失败后手动续跑时，只执行该节点及其下游节点；不传时从 DAG 根节点开始。自动扩大区间后的重跑沿用同一个 `startFromTaskId`。成功响应仍是最后一次 SQL task run 的执行结果。
+
+### 成功响应
+
+```json
+{
+  "runId": "6bf5d79d-5f3d-400c-a23c-abae2a92c9df",
+  "status": "SUCCESS",
+  "manifestLocation": "classpath:sql/tasks/codeforces-warehouse-refresh.yml",
+  "startFromTaskId": null,
+  "failedTaskId": null,
+  "startedAt": "2026-07-05T11:29:09.728Z",
+  "finishedAt": "2026-07-05T11:29:09.834Z",
+  "durationMillis": 106,
+  "tasks": [
+    {
+      "taskId": "codeforces.dwd.submission",
+      "description": "Refresh Codeforces DWD submissions for the ODS batch date interval.",
+      "sqlLocation": "classpath:sql/dwd/upsert_dwd_codeforces__submission.sql",
+      "status": "SUCCESS",
+      "startedAt": "2026-07-05T11:29:09.729Z",
+      "finishedAt": "2026-07-05T11:29:09.775Z",
+      "durationMillis": 45,
+      "affectedRows": 1000,
+      "errorCode": null,
+      "message": null
+    }
+  ]
+}
+```
+
+如果 SQL 节点执行失败，HTTP 仍返回执行结果对象，但 `status` 为 `FAILED`、`failedTaskId` 为失败节点 ID，失败节点的 `errorCode` 为 `SQL_TASK_SQL_EXECUTION_FAILED`。请求体非法、`batchId` 没有可刷新的 ODS 提交区间，或 `startFromTaskId` 不存在时返回 `400` 和稳定 `code`；manifest、DAG 或 SQL 文件配置错误返回 `500` 和稳定 `code`。
+
+## POST /api/training-data/admin/codeforces/handles
+
+管理员创建一个平台 `studentIdentity` 到 Codeforces handle 的绑定。一个 `studentIdentity` 只能绑定一个 Codeforces handle；一个 Codeforces handle 也只能绑定给一个 `studentIdentity`。
+
+该接口只维护 `training-data-codeforces` 内的 `codeforces_handle_account`，不会创建或修改 auth 登录账号。
+
+### 请求
+
+```http
+POST /api/training-data/admin/codeforces/handles
+Authorization: Bearer <admin_access_token>
+Content-Type: application/json
+
+{
+  "studentIdentity": "112487张三",
+  "handle": "tourist"
+}
+```
+
+### 响应
+
+```json
+{
+  "studentIdentity": "112487张三",
+  "handle": "tourist"
+}
+```
+
+## GET /api/training-data/codeforces/handles
+
+游客按平台 `studentIdentity` 查询已绑定的 Codeforces handle。该接口是 guest endpoint，不需要 JWT，也不会解析请求里的 `Authorization` header。
+
+### 请求
+
+```http
+GET /api/training-data/codeforces/handles?studentIdentity=112487张三
+```
+
+### 响应
+
+```json
+{
+  "studentIdentity": "112487张三",
+  "handle": "tourist"
+}
+```
+
+## GET /api/training-data/codeforces/accepted-summary
+
+游客按平台 `studentIdentity` 查询 Codeforces DWS 区间 rating AC 汇总。接口不需要 JWT，也不会解析 `Authorization` header。
+
+可选参数：
+
+- `acceptedFromDateUtcPlus8` / `acceptedToDateUtcPlus8`：ISO 日期，例如 `2026-07-01`。
+- `minProblemRating` / `maxProblemRating`：整数 rating 边界。设置任一边界时不包含 unrated。
+
+```http
+GET /api/training-data/codeforces/accepted-summary?studentIdentity=112487张三&acceptedFromDateUtcPlus8=2026-07-01&acceptedToDateUtcPlus8=2026-07-31&minProblemRating=800&maxProblemRating=1600
+```
+
+```json
+{
+  "studentIdentity": "112487张三",
+  "authorHandle": "tourist",
+  "totalAcceptedProblemCount": 3,
+  "ratingCounts": [
+    { "problemRating": "800", "acceptedProblemCount": 2 },
+    { "problemRating": "1600", "acceptedProblemCount": 1 }
+  ]
+}
+```
+
+## GET /api/training-data/codeforces/submissions/by-student
+
+游客按平台 `studentIdentity` 查询 Codeforces DWD 提交明细。接口不需要 JWT，也不会解析 `Authorization` header。
+
+可选参数：
+
+- `submittedFromUtcPlus8` / `submittedToUtcPlus8`：ISO 本地时间，例如 `2026-07-01T00:00:00`。
+- `minProblemRating` / `maxProblemRating`：整数 rating 边界。设置任一边界时不包含 unrated。
+
+```http
+GET /api/training-data/codeforces/submissions/by-student?studentIdentity=112487张三&submittedFromUtcPlus8=2026-07-01T00:00:00&submittedToUtcPlus8=2026-07-31T23:59:59
+```
+
+响应：
+
+```json
+{
+  "studentIdentity": "112487张三",
+  "authorHandle": "tourist",
+  "submissions": [
+    {
+      "codeforcesSubmissionId": 379398914,
+      "studentIdentity": "112487张三",
+      "authorHandle": "tourist",
+      "submittedAtUtcPlus8": "2026-07-01T12:00:00",
+      "submittedDateUtcPlus8": "2026-07-01",
+      "problemKey": "2237:G",
+      "problemRating": 2900,
+      "verdict": "OK",
+      "accepted": true
+    }
+  ]
+}
+```
+
+提交明细响应还会包含 contest、problem、language、testset、耗时和内存等字段；上例只展示主要字段。
+
+## GET /api/training-data/codeforces/submissions/by-problem
+
+游客按 Codeforces `problemKey` 查询 DWD 提交明细。接口不需要 JWT，也不会解析 `Authorization` header。
+
+```http
+GET /api/training-data/codeforces/submissions/by-problem?problemKey=2237:G&submittedFromUtcPlus8=2026-07-01T00:00:00&submittedToUtcPlus8=2026-07-31T23:59:59
+```
+
+响应结构：
+
+```json
+{
+  "problemKey": "2237:G",
+  "submissions": [
+    {
+      "codeforcesSubmissionId": 379398914,
+      "studentIdentity": "112487张三",
+      "authorHandle": "tourist",
+      "problemKey": "2237:G",
+      "accepted": true
+    }
+  ]
+}
+```
+
+如果结果里存在未绑定 `studentIdentity` 的 Codeforces handle，返回 `404` 和 `CODEFORCES_HANDLE_ACCOUNT_NOT_FOUND`。
+
+## GET /api/training-data/codeforces/first-accepted/by-student
+
+游客按平台 `studentIdentity` 查询 Codeforces DWM 首 AC 题目明细。接口不需要 JWT，也不会解析 `Authorization` header。
+
+可选参数：
+
+- `firstAcceptedFromUtcPlus8` / `firstAcceptedToUtcPlus8`：ISO 本地时间，例如 `2026-07-01T00:00:00`。
+- `minProblemRating` / `maxProblemRating`：整数 rating 边界。设置任一边界时不包含 unrated。
+
+```http
+GET /api/training-data/codeforces/first-accepted/by-student?studentIdentity=112487张三&firstAcceptedFromUtcPlus8=2026-07-01T00:00:00&firstAcceptedToUtcPlus8=2026-07-31T23:59:59
+```
+
+```json
+{
+  "studentIdentity": "112487张三",
+  "authorHandle": "tourist",
+  "totalAcceptedProblemCount": 1,
+  "problems": [
+    {
+      "problemKey": "2237:G",
+      "problemRating": 2900,
+      "firstAcceptedSubmissionId": 379398914,
+      "firstAcceptedAtUtcPlus8": "2026-07-01T12:00:00",
+      "firstAcceptedDateUtcPlus8": "2026-07-01",
+      "firstAcceptedLanguage": "C++23"
+    }
+  ]
+}
+```
+
+## GET /api/training-data/codeforces/first-accepted/by-problem
+
+游客按 Codeforces `problemKey` 查询 DWM 首次通过该题的 handle 列表。接口不需要 JWT，也不会解析 `Authorization` header。
+
+```http
+GET /api/training-data/codeforces/first-accepted/by-problem?problemKey=2237:G&firstAcceptedFromUtcPlus8=2026-07-01T00:00:00&firstAcceptedToUtcPlus8=2026-07-31T23:59:59
+```
+
+```json
+{
+  "problemKey": "2237:G",
+  "acceptedHandleCount": 1,
+  "acceptedHandles": [
+    {
+      "studentIdentity": "112487张三",
+      "authorHandle": "tourist",
+      "firstAcceptedAtUtcPlus8": "2026-07-01T12:00:00"
+    }
+  ]
+}
+```
+
+如果结果里存在未绑定 `studentIdentity` 的 Codeforces handle，返回 `404` 和 `CODEFORCES_HANDLE_ACCOUNT_NOT_FOUND`。
+
+## PATCH /api/training-data/admin/codeforces/handles:change-identity
+
+管理员迁移 Codeforces handle 绑定的 `studentIdentity`。该操作只更新 `codeforces_handle_account.student_identity`，不会修改 handle，也不会修改 auth 登录账号。
+
+如果 `newStudentIdentity` 已经绑定了 Codeforces handle，返回 `409`。
+
+### 请求
+
+```http
+PATCH /api/training-data/admin/codeforces/handles:change-identity
+Authorization: Bearer <admin_access_token>
+Content-Type: application/json
+
+{
+  "oldStudentIdentity": "112487张三",
+  "newStudentIdentity": "112488张三"
+}
+```
+
+### 响应
+
+```json
+{
+  "studentIdentity": "112488张三",
+  "handle": "tourist"
+}
+```
+
 ## 错误响应
 
-当前 auth 模块的业务错误响应：
+当前 auth 模块和 Codeforces handle-account 接口的业务错误响应：
 
 ```json
 {
@@ -439,5 +788,9 @@ Content-Type: application/json
 | 权限不足或管理员自我降级 | `403` | `AUTH_FORBIDDEN` |
 | 用户不存在 | `404` | `AUTH_USER_NOT_FOUND` |
 | 用户已存在 | `409` | `AUTH_USER_EXISTS` |
+| CF handle 绑定参数不合法 | `400` | `CODEFORCES_HANDLE_ACCOUNT_INVALID_REQUEST` |
+| CF handle 绑定不存在 | `404` | `CODEFORCES_HANDLE_ACCOUNT_NOT_FOUND` |
+| `studentIdentity` 已绑定 CF handle | `409` | `CODEFORCES_HANDLE_ACCOUNT_IDENTITY_EXISTS` |
+| CF handle 已绑定给其它 `studentIdentity` | `409` | `CODEFORCES_HANDLE_ACCOUNT_HANDLE_EXISTS` |
 
 Spring Security 自身拦截的未认证或 token 无效请求可能返回默认 `401` / `403` 响应体。

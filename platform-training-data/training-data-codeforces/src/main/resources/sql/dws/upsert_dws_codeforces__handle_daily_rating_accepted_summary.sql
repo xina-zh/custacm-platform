@@ -1,18 +1,5 @@
 delete from dws_codeforces__handle_daily_rating_accepted_summary
-where not exists (
-    select 1
-    from (
-        select
-            first_accepted.author_handle,
-            first_accepted.first_accepted_date_utc_plus8 as accepted_date_utc_plus8
-        from dwm_codeforces__handle_problem_first_accepted first_accepted
-        group by
-            first_accepted.author_handle,
-            first_accepted.first_accepted_date_utc_plus8
-    ) current_summary
-    where current_summary.author_handle = dws_codeforces__handle_daily_rating_accepted_summary.author_handle
-      and current_summary.accepted_date_utc_plus8 = dws_codeforces__handle_daily_rating_accepted_summary.accepted_date_utc_plus8
-);
+where accepted_date_utc_plus8 between :refreshFromDateUtcPlus8 and :refreshToDateUtcPlus8;
 
 insert into dws_codeforces__handle_daily_rating_accepted_summary (
     author_handle,
@@ -80,6 +67,7 @@ select
     coalesce(sum(case when first_accepted.problem_rating = 3500 then 1 else 0 end), 0) as rating_3500_accepted_problem_count,
     coalesce(sum(case when first_accepted.problem_rating is null then 1 else 0 end), 0) as unrated_accepted_problem_count
 from dwm_codeforces__handle_problem_first_accepted first_accepted
+where first_accepted.first_accepted_date_utc_plus8 between :refreshFromDateUtcPlus8 and :refreshToDateUtcPlus8
 group by
     first_accepted.author_handle,
     first_accepted.first_accepted_date_utc_plus8

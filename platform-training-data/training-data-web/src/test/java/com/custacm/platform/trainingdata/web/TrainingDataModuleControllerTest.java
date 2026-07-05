@@ -18,7 +18,10 @@ class TrainingDataModuleControllerTest {
         assertThat(controller.moduleInfo().get("features"))
                 .isEqualTo(List.of(
                         "oj-warehouse-modules",
-                        "codeforces-ods-submission"
+                        "codeforces-ods-submission",
+                        "codeforces-handle-account",
+                        "codeforces-warehouse-refresh",
+                        "codeforces-submission-collector"
                 ));
     }
 }

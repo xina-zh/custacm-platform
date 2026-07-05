@@ -46,6 +46,30 @@ class TrainingDataSecurityConfigTest {
     }
 
     @Test
+    void codeforcesHandleCreateRequiresAuthentication() throws Exception {
+        mockMvc.perform(post("/api/training-data/admin/codeforces/handles")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void codeforcesWarehouseRefreshRequiresAuthentication() throws Exception {
+        mockMvc.perform(post("/api/training-data/admin/codeforces/warehouse:refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void codeforcesSubmissionCollectionRequiresAuthentication() throws Exception {
+        mockMvc.perform(post("/api/training-data/admin/codeforces/submissions:collect")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void odsIngestRejectsPlayerRole() throws Exception {
         mockMvc.perform(post("/api/training-data/admin/ods/codeforces/submissions:batch-upsert")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_player")))
@@ -55,11 +79,97 @@ class TrainingDataSecurityConfigTest {
     }
 
     @Test
+    void codeforcesHandleCreateRejectsPlayerRole() throws Exception {
+        mockMvc.perform(post("/api/training-data/admin/codeforces/handles")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_player")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void codeforcesWarehouseRefreshRejectsPlayerRole() throws Exception {
+        mockMvc.perform(post("/api/training-data/admin/codeforces/warehouse:refresh")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_player")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void codeforcesSubmissionCollectionRejectsPlayerRole() throws Exception {
+        mockMvc.perform(post("/api/training-data/admin/codeforces/submissions:collect")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_player")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void odsIngestAllowsAdminRolePastSecurity() throws Exception {
         mockMvc.perform(post("/api/training-data/admin/ods/codeforces/submissions:batch-upsert")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_admin")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("[]"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void codeforcesHandleCreateAllowsAdminRolePastSecurity() throws Exception {
+        mockMvc.perform(post("/api/training-data/admin/codeforces/handles")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_admin")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void codeforcesWarehouseRefreshAllowsAdminRolePastSecurity() throws Exception {
+        mockMvc.perform(post("/api/training-data/admin/codeforces/warehouse:refresh")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_admin")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void codeforcesSubmissionCollectionAllowsAdminRolePastSecurity() throws Exception {
+        mockMvc.perform(post("/api/training-data/admin/codeforces/submissions:collect")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_admin")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void codeforcesHandleLookupIsPublicAndIgnoresBearerToken() throws Exception {
+        mockMvc.perform(get("/api/training-data/codeforces/handles")
+                        .param("studentIdentity", "112487张三")
+                        .header("Authorization", "Bearer not-a-jwt"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void codeforcesWarehouseQueryEndpointsArePublicAndIgnoreBearerToken() throws Exception {
+        mockMvc.perform(get("/api/training-data/codeforces/accepted-summary")
+                        .param("studentIdentity", "112487张三")
+                        .header("Authorization", "Bearer not-a-jwt"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/training-data/codeforces/submissions/by-student")
+                        .param("studentIdentity", "112487张三")
+                        .header("Authorization", "Bearer not-a-jwt"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/training-data/codeforces/submissions/by-problem")
+                        .param("problemKey", "1000:A")
+                        .header("Authorization", "Bearer not-a-jwt"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/training-data/codeforces/first-accepted/by-student")
+                        .param("studentIdentity", "112487张三")
+                        .header("Authorization", "Bearer not-a-jwt"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/training-data/codeforces/first-accepted/by-problem")
+                        .param("problemKey", "1000:A")
+                        .header("Authorization", "Bearer not-a-jwt"))
                 .andExpect(status().isNotFound());
     }
 }

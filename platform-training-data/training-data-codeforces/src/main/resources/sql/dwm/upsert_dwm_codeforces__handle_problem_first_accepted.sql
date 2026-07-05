@@ -1,24 +1,5 @@
 delete from dwm_codeforces__handle_problem_first_accepted
-where not exists (
-    select 1
-    from (
-        select
-            dwd.author_handle,
-            dwd.problem_key
-        from dwd_codeforces__submission dwd
-        where dwd.is_accepted = 1
-          and dwd.problem_key is not null
-          and dwd.problem_contest_id is not null
-          and dwd.problem_index is not null
-          and dwd.submitted_at_utc_plus8 is not null
-          and dwd.submitted_date_utc_plus8 is not null
-        group by
-            dwd.author_handle,
-            dwd.problem_key
-    ) current_first_accepted
-    where current_first_accepted.author_handle = dwm_codeforces__handle_problem_first_accepted.author_handle
-      and current_first_accepted.problem_key = dwm_codeforces__handle_problem_first_accepted.problem_key
-);
+where first_accepted_date_utc_plus8 between :refreshFromDateUtcPlus8 and :refreshToDateUtcPlus8;
 
 insert into dwm_codeforces__handle_problem_first_accepted (
     author_handle,
@@ -65,6 +46,7 @@ from (
       and dwd.submitted_date_utc_plus8 is not null
 ) ranked
 where ranked.accepted_rank = 1
+  and ranked.submitted_date_utc_plus8 between :refreshFromDateUtcPlus8 and :refreshToDateUtcPlus8
 on duplicate key update
     problem_contest_id = values(problem_contest_id),
     problem_index = values(problem_index),
