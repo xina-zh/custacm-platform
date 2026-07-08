@@ -24,9 +24,16 @@ public class TrainingDataModuleController {
                 "features", List.of(
                         "oj-warehouse-modules",
                         "codeforces-ods-submission",
+                        "atcoder-ods-submission",
+                        "atcoder-ods-problem",
+                        "atcoder-warehouse-tables",
+                        "atcoder-warehouse-refresh",
                         "codeforces-handle-account",
                         "codeforces-warehouse-refresh",
-                        "codeforces-submission-collector"
+                        "codeforces-submission-collector",
+                        "atcoder-submission-collector",
+                        "atcoder-problem-model",
+                        "atcoder-problem-list-collector"
                 )
         );
     }

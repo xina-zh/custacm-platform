@@ -1,15 +1,20 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrainingQueryPanel } from '../components/TrainingQueryPanel';
-import type {
-  CodeforcesAcceptedSummary,
-  CodeforcesFirstAcceptedReport,
-  CodeforcesStudentSubmissionReport,
-  StudentTrainingRecord,
-  TrainingQueryMode,
-  TrainingQueryRange,
+import {
+  OJ_NAMES,
+  type CodeforcesAcceptedSummary,
+  type CodeforcesFirstAcceptedReport,
+  type CodeforcesProblemFirstAcceptedReport,
+  type CodeforcesProblemSubmissionReport,
+  type CodeforcesStudentSubmissionReport,
+  type OjName,
+  type StudentIdentity,
+  type StudentTrainingRecord,
+  type TrainingQueryMode,
+  type TrainingQueryRange,
 } from '../types';
 
 const emptyQuery: TrainingQueryRange = {
@@ -23,6 +28,7 @@ const sampleRecord: StudentTrainingRecord = {
   studentIdentity: '230511213黄炳睿',
   role: 'player',
   handle: 'tourist',
+  handles: { [OJ_NAMES.CODEFORCES]: 'tourist' },
   handleStatus: 'bound',
   acceptedSummary: {
     studentIdentity: '230511213黄炳睿',
@@ -42,7 +48,7 @@ const sampleSubmissions: CodeforcesStudentSubmissionReport = {
   studentIdentity: '230511213黄炳睿',
   authorHandle: 'tourist',
   page: 1,
-  limit: 100,
+  limit: 15,
   total: 2,
   totalPages: 1,
   hasMore: false,
@@ -104,6 +110,11 @@ const sampleFirstAccepted: CodeforcesFirstAcceptedReport = {
   studentIdentity: '230511213黄炳睿',
   authorHandle: 'tourist',
   totalAcceptedProblemCount: 2,
+  page: 1,
+  limit: 15,
+  total: 2,
+  totalPages: 1,
+  hasMore: false,
   problems: [
     {
       problemKey: '1000:A',
@@ -136,7 +147,90 @@ const sampleFirstAccepted: CodeforcesFirstAcceptedReport = {
   ],
 };
 
-const sampleAutoCollectSummaries: CodeforcesAcceptedSummary[] = [
+const sampleProblemSubmissions: CodeforcesProblemSubmissionReport = {
+  problemKey: '2242:C',
+  page: 1,
+  limit: 15,
+  total: 2,
+  totalPages: 1,
+  hasMore: false,
+  submissions: [
+    {
+      codeforcesSubmissionId: 21,
+      studentIdentity: '240212224苏可航',
+      authorHandle: 'Apeiron_24',
+      contestId: 2242,
+      submittedAtUtcPlus8: '2026-06-01T08:30:00',
+      submittedDateUtcPlus8: '2026-06-01',
+      relativeTimeSeconds: null,
+      problemKey: '2242:C',
+      problemContestId: 2242,
+      problemIndex: 'C',
+      problemName: 'Sample Problem',
+      problemType: 'PROGRAMMING',
+      problemPoints: null,
+      problemRating: 1900,
+      problemTagsJson: null,
+      authorParticipantType: 'CONTESTANT',
+      programmingLanguage: 'GNU C++20',
+      verdict: 'WRONG_ANSWER',
+      accepted: false,
+      testset: 'TESTS',
+      passedTestCount: 4,
+      timeConsumedMillis: 124,
+      memoryConsumedBytes: 2048000,
+    },
+    {
+      codeforcesSubmissionId: 22,
+      studentIdentity: '240521409李权澎',
+      authorHandle: 'orange_lov_gouzi',
+      contestId: 2242,
+      submittedAtUtcPlus8: '2026-06-02T10:00:00',
+      submittedDateUtcPlus8: '2026-06-02',
+      relativeTimeSeconds: null,
+      problemKey: '2242:C',
+      problemContestId: 2242,
+      problemIndex: 'C',
+      problemName: 'Sample Problem',
+      problemType: 'PROGRAMMING',
+      problemPoints: null,
+      problemRating: 1900,
+      problemTagsJson: null,
+      authorParticipantType: 'CONTESTANT',
+      programmingLanguage: 'GNU C++20',
+      verdict: 'OK',
+      accepted: true,
+      testset: 'TESTS',
+      passedTestCount: 12,
+      timeConsumedMillis: 93,
+      memoryConsumedBytes: 1024000,
+    },
+  ],
+};
+
+const sampleProblemFirstAccepted: CodeforcesProblemFirstAcceptedReport = {
+  problemKey: '2242:C',
+  acceptedHandleCount: 2,
+  page: 1,
+  limit: 15,
+  total: 2,
+  totalPages: 1,
+  hasMore: false,
+  acceptedHandles: [
+    {
+      studentIdentity: '240212224苏可航',
+      handle: 'Apeiron_24',
+      firstAcceptedAtUtcPlus8: '2026-06-01T09:30:00',
+    },
+    {
+      studentIdentity: '240521409李权澎',
+      handle: 'orange_lov_gouzi',
+      firstAcceptedAtUtcPlus8: '2026-06-02T10:00:00',
+    },
+  ],
+};
+
+const sampleMultiUserSummaries: CodeforcesAcceptedSummary[] = [
   {
     studentIdentity: '230511214李明',
     authorHandle: 'Benq',
@@ -157,39 +251,134 @@ const sampleAutoCollectSummaries: CodeforcesAcceptedSummary[] = [
   },
 ];
 
+function firstAcceptedReportWithCount(count: number): CodeforcesFirstAcceptedReport {
+  const limit = 15;
+  const pageSize = Math.min(count, limit);
+  return {
+    ...sampleFirstAccepted,
+    totalAcceptedProblemCount: count,
+    page: 1,
+    limit,
+    total: count,
+    totalPages: Math.ceil(count / limit),
+    hasMore: count > limit,
+    problems: Array.from({ length: pageSize }, (_, index) => {
+      const number = count - index;
+      return {
+        ...sampleFirstAccepted.problems[0]!,
+        problemKey: `local:${number}`,
+        problemName: `Accepted Problem ${number}`,
+        firstAcceptedSubmissionId: number,
+        firstAcceptedAtUtcPlus8: `2024-01-${String(Math.floor(index / 24) + 1).padStart(2, '0')}T${String(index % 24).padStart(2, '0')}:00:00`,
+        firstAcceptedDateUtcPlus8: `2024-01-${String(Math.floor(index / 24) + 1).padStart(2, '0')}`,
+      };
+    }),
+  };
+}
+
+function problemFirstAcceptedReportWithCount(count: number): CodeforcesProblemFirstAcceptedReport {
+  const limit = 15;
+  const pageSize = Math.min(count, limit);
+  return {
+    ...sampleProblemFirstAccepted,
+    acceptedHandleCount: count,
+    page: 1,
+    limit,
+    total: count,
+    totalPages: Math.ceil(count / limit),
+    hasMore: count > limit,
+    acceptedHandles: Array.from({ length: pageSize }, (_, index) => {
+      const number = count - index;
+      return {
+        studentIdentity: `240000${String(number).padStart(3, '0')}同学`,
+        handle: `handle_${number}`,
+        firstAcceptedAtUtcPlus8: `2024-02-${String(Math.floor(index / 24) + 1).padStart(2, '0')}T${String(index % 24).padStart(2, '0')}:00:00`,
+      };
+    }),
+  };
+}
+
 function renderTrainingQueryPanel(
   query: TrainingQueryRange = emptyQuery,
   onApplyQuery = vi.fn(),
   options: {
     firstAccepted?: CodeforcesFirstAcceptedReport | null;
+    firstAcceptedLimit?: number;
+    firstAcceptedPage?: number;
+    onOjNameChange?: (ojName: OjName) => void;
+    onFirstAcceptedPageChange?: (page: number, limit: number) => Promise<void>;
     onSubmissionPageChange?: (page: number, limit: number) => Promise<void>;
+    onProblemKeyChange?: (problemKey: string) => void;
+    onProblemFirstAcceptedPageChange?: (page: number, limit: number) => Promise<void>;
+    onProblemSubmissionPageChange?: (page: number, limit: number) => Promise<void>;
+    problemFirstAccepted?: CodeforcesProblemFirstAcceptedReport | null;
+    problemFirstAcceptedLimit?: number;
+    problemFirstAcceptedPage?: number;
+    problemKey?: string;
+    problemSubmissionLimit?: number;
+    problemSubmissionPage?: number;
+    problemSubmissions?: CodeforcesProblemSubmissionReport | null;
     record?: StudentTrainingRecord;
     submissionLimit?: number;
     submissionPage?: number;
     submissions?: CodeforcesStudentSubmissionReport | null;
-    autoCollectSummaries?: CodeforcesAcceptedSummary[];
+    multiUserSummaries?: CodeforcesAcceptedSummary[];
+    ojName?: OjName;
     queryMode?: TrainingQueryMode;
+    onSelectedIdentityChange?: (studentIdentity: StudentIdentity) => Promise<void> | void;
     selectedIdentity?: string | null;
     studentOptions?: string[];
   } = {},
 ) {
   function TrainingQueryPanelHarness() {
     const [queryMode, setQueryMode] = useState<TrainingQueryMode>(options.queryMode ?? 'multiple');
+    const [ojName, setOjName] = useState<OjName>(options.ojName ?? OJ_NAMES.CODEFORCES);
+    const [problemKey, setProblemKey] = useState(options.problemKey ?? '2242:C');
+    const [selectedIdentity, setSelectedIdentity] = useState<StudentIdentity | null>(
+      options.selectedIdentity === undefined ? '230511213黄炳睿' : options.selectedIdentity,
+    );
+    function handleOjNameChange(nextOjName: OjName) {
+      setOjName(nextOjName);
+      options.onOjNameChange?.(nextOjName);
+    }
+    function handleProblemKeyChange(nextProblemKey: string) {
+      setProblemKey(nextProblemKey);
+      options.onProblemKeyChange?.(nextProblemKey);
+    }
+    async function handleSelectedIdentityChange(nextIdentity: StudentIdentity) {
+      setSelectedIdentity(nextIdentity);
+      await options.onSelectedIdentityChange?.(nextIdentity);
+    }
     return (
       <TrainingQueryPanel
-        autoCollectSummaries={options.autoCollectSummaries ?? sampleAutoCollectSummaries}
+        multiUserSummaries={options.multiUserSummaries ?? sampleMultiUserSummaries}
         firstAccepted={options.firstAccepted ?? null}
+        firstAcceptedLimit={options.firstAcceptedLimit ?? 15}
+        firstAcceptedPage={options.firstAcceptedPage ?? 1}
         isRefreshing={false}
+        ojName={ojName}
         onApplyQuery={onApplyQuery}
+        onFirstAcceptedPageChange={options.onFirstAcceptedPageChange ?? vi.fn()}
+        onOjNameChange={handleOjNameChange}
+        onProblemKeyChange={handleProblemKeyChange}
+        onProblemFirstAcceptedPageChange={options.onProblemFirstAcceptedPageChange ?? vi.fn()}
+        onProblemSubmissionPageChange={options.onProblemSubmissionPageChange ?? vi.fn()}
         onQueryModeChange={setQueryMode}
         onRefresh={vi.fn()}
         onSubmissionPageChange={options.onSubmissionPageChange ?? vi.fn()}
-        onSelectedIdentityChange={vi.fn()}
+        onSelectedIdentityChange={handleSelectedIdentityChange}
+        problemFirstAccepted={options.problemFirstAccepted ?? null}
+        problemFirstAcceptedLimit={options.problemFirstAcceptedLimit ?? 15}
+        problemFirstAcceptedPage={options.problemFirstAcceptedPage ?? 1}
+        problemKey={problemKey}
+        problemSubmissionLimit={options.problemSubmissionLimit ?? 15}
+        problemSubmissionPage={options.problemSubmissionPage ?? 1}
+        problemSubmissions={options.problemSubmissions ?? null}
         query={query}
         queryMode={queryMode}
         record={options.record ?? sampleRecord}
-        selectedIdentity={options.selectedIdentity === undefined ? '230511213黄炳睿' : options.selectedIdentity}
-        submissionLimit={options.submissionLimit ?? 100}
+        selectedIdentity={selectedIdentity}
+        submissionLimit={options.submissionLimit ?? 15}
         submissionPage={options.submissionPage ?? 1}
         studentOptions={options.studentOptions ?? ['230511213黄炳睿']}
         submissions={'submissions' in options ? options.submissions ?? null : sampleSubmissions}
@@ -255,6 +444,28 @@ describe('TrainingQueryPanel', () => {
     expect(screen.queryByText('UNRATED')).toBeNull();
   });
 
+  it('uses numeric bucket starts when computing the highest accepted bucket', async () => {
+    const user = userEvent.setup();
+    renderTrainingQueryPanel(emptyQuery, vi.fn(), {
+      record: {
+        ...sampleRecord,
+        acceptedSummary: {
+          ...sampleRecord.acceptedSummary!,
+          ratingCounts: [
+            { problemRating: 'UNRATED', acceptedProblemCount: 3 },
+            { problemRating: '800', acceptedProblemCount: 2 },
+            { problemRating: '2800+', acceptedProblemCount: 1 },
+          ],
+        },
+      },
+    });
+
+    await user.click(screen.getByRole('tab', { name: '单人查询' }));
+
+    expect(within(screen.getByLabelText('难度分布摘要')).getByText('2800+')).not.toBeNull();
+    expect(screen.getByText('800')).not.toBeNull();
+  });
+
   it('sends backend pagination parameters from the submission pager', async () => {
     const user = userEvent.setup();
     const onSubmissionPageChange = vi.fn().mockResolvedValue(undefined);
@@ -272,32 +483,173 @@ describe('TrainingQueryPanel', () => {
     await user.click(screen.getByRole('button', { name: '下一页' }));
     await user.selectOptions(screen.getByLabelText('每页提交数'), '50');
 
-    expect(onSubmissionPageChange).toHaveBeenCalledWith(2, 100);
+    expect(onSubmissionPageChange).toHaveBeenCalledWith(2, 15);
     expect(onSubmissionPageChange).toHaveBeenCalledWith(1, 50);
   });
 
-  it('defaults to automatic collection user summary table with multiple statistics first', () => {
+  it('sends backend pagination parameters from the accepted problem pager', async () => {
+    const user = userEvent.setup();
+    const onFirstAcceptedPageChange = vi.fn().mockResolvedValue(undefined);
+    renderTrainingQueryPanel(emptyQuery, vi.fn(), {
+      firstAccepted: firstAcceptedReportWithCount(16),
+      onFirstAcceptedPageChange,
+      queryMode: 'single',
+    });
+
+    await user.click(screen.getByRole('tab', { name: '最近通过' }));
+
+    expect(screen.getByText('16 题 · 第 1/2 页')).not.toBeNull();
+    await user.click(within(screen.getByLabelText('通过题目分页')).getByRole('button', { name: '下一页' }));
+    await user.selectOptions(screen.getByLabelText('每页通过题目数'), '50');
+
+    expect(onFirstAcceptedPageChange).toHaveBeenCalledWith(2, 15);
+    expect(onFirstAcceptedPageChange).toHaveBeenCalledWith(1, 50);
+  });
+
+  it('defaults to the multi-user summary table with multiple statistics first', () => {
     renderTrainingQueryPanel();
 
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['多人统计', '单人查询']);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['多人统计', '单人查询', '题目查询']);
     expect(screen.getByRole('tab', { name: '多人统计' }).getAttribute('aria-selected')).toBe('true');
 
-    expect(screen.getByRole('table', { name: '全部选手做题量统计' })).not.toBeNull();
+    expect(screen.getByRole('table', { name: '全部队员做题量统计' })).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '排名' })).toBeNull();
-    expect(screen.getByRole('columnheader', { name: '选手' })).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: '队员' })).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Codeforces' })).toBeNull();
     expect(screen.getByRole('columnheader', { name: '总计' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '1600' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '1800' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '2100' })).not.toBeNull();
-    const table = screen.getByRole('table', { name: '全部选手做题量统计' });
+    const table = screen.getByRole('table', { name: '全部队员做题量统计' });
     const rows = within(table).getAllByRole('row');
     expect(within(rows[1]!).getByRole('rowheader').textContent).toContain('230511214李明');
     expect(within(rows[1]!).getByRole('rowheader').textContent).toContain('Benq');
     expect(within(rows[1]!).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['5', '3', '2', '-']);
     expect(rows[2]?.textContent).toContain('230511213黄炳睿');
     expect(screen.queryByRole('table', { name: '最近提交明细' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '查询' })).toBeNull();
+  });
+
+  it('renders problem-level submissions and first accepted handles', async () => {
+    const user = userEvent.setup();
+    renderTrainingQueryPanel(emptyQuery, vi.fn(), {
+      problemFirstAccepted: sampleProblemFirstAccepted,
+      problemSubmissions: sampleProblemSubmissions,
+      queryMode: 'problem',
+    });
+
+    expect(screen.getByLabelText('题目维度统计')).not.toBeNull();
+    expect(screen.getAllByText('题目编号').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Sample Problem')).not.toBeNull();
+    expect(screen.getByRole('table', { name: '题目提交明细' })).not.toBeNull();
+    const submissionRows = within(screen.getByRole('table', { name: '题目提交明细' })).getAllByRole('row');
+    expect(submissionRows[1]?.textContent).toContain('240521409李权澎');
+    expect(submissionRows[2]?.textContent).toContain('240212224苏可航');
+    expect(screen.getByText('Accept')).not.toBeNull();
+    expect(screen.getByText('WRONG_ANSWER')).not.toBeNull();
+
+    await user.click(screen.getByRole('tab', { name: '首 AC handle' }));
+
+    expect(screen.getByRole('table', { name: '题目首 AC handle' })).not.toBeNull();
+    expect(screen.getByText('orange_lov_gouzi')).not.toBeNull();
+    expect(screen.getByText('Apeiron_24')).not.toBeNull();
+  });
+
+  it('shows AtCoder problem titles instead of problem keys in problem query summary', () => {
+    renderTrainingQueryPanel(emptyQuery, vi.fn(), {
+      ojName: OJ_NAMES.ATCODER,
+      problemKey: 'abc442_d',
+      problemSubmissions: {
+        ...sampleProblemSubmissions,
+        problemKey: 'abc442_d',
+        submissions: [
+          {
+            ...sampleProblemSubmissions.submissions[0]!,
+            submissionId: '72705820',
+            codeforcesSubmissionId: undefined,
+            studentIdentity: '240212224苏可航',
+            handle: 'Apeiron_24',
+            authorHandle: undefined,
+            submittedAtUtcPlus8: '2026-01-24T20:33:54',
+            submittedDateUtcPlus8: '2026-01-24',
+            problemKey: 'abc442_d',
+            problemContestId: undefined,
+            problemIndex: 'G',
+            problemName: 'G. Swap and Range Sum',
+            problemRating: null,
+            difficulty: null,
+            language: 'C++23 (GCC 15.2.0)',
+            programmingLanguage: undefined,
+            verdict: 'AC',
+            accepted: true,
+            timeConsumedMillis: 482,
+            sourceUrl: 'https://atcoder.jp/contests/abc442/submissions/72705820',
+          },
+        ],
+      },
+      queryMode: 'problem',
+    });
+
+    expect(screen.getByText('G. Swap and Range Sum')).not.toBeNull();
+    expect(screen.queryByText('abc442_d')).toBeNull();
+  });
+
+  it('auto-runs problem queries only after a problem key is filled', async () => {
+    const user = userEvent.setup();
+    const onApplyQuery = vi.fn().mockResolvedValue(undefined);
+    renderTrainingQueryPanel(emptyQuery, onApplyQuery, {
+      problemKey: '',
+      queryMode: 'problem',
+    });
+
+    expect(screen.queryByRole('button', { name: '查询' })).toBeNull();
+    expect(onApplyQuery).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText('题目编号'), '2242:C');
+
+    await waitFor(() => expect(onApplyQuery).toHaveBeenLastCalledWith(emptyQuery, 'problem'));
+  });
+
+  it('sends backend pagination parameters from the problem submission pager', async () => {
+    const user = userEvent.setup();
+    const onProblemSubmissionPageChange = vi.fn().mockResolvedValue(undefined);
+    renderTrainingQueryPanel(emptyQuery, vi.fn(), {
+      onProblemSubmissionPageChange,
+      problemSubmissions: {
+        ...sampleProblemSubmissions,
+        total: 120,
+        totalPages: 2,
+        hasMore: true,
+      },
+      queryMode: 'problem',
+    });
+
+    await user.click(screen.getByRole('button', { name: '下一页' }));
+    await user.selectOptions(screen.getByLabelText('题目每页提交数'), '50');
+
+    expect(onProblemSubmissionPageChange).toHaveBeenCalledWith(2, 15);
+    expect(onProblemSubmissionPageChange).toHaveBeenCalledWith(1, 50);
+  });
+
+  it('sends backend pagination parameters from the problem first-accepted pager', async () => {
+    const user = userEvent.setup();
+    const onProblemFirstAcceptedPageChange = vi.fn().mockResolvedValue(undefined);
+    renderTrainingQueryPanel(emptyQuery, vi.fn(), {
+      onProblemFirstAcceptedPageChange,
+      problemFirstAccepted: problemFirstAcceptedReportWithCount(16),
+      problemSubmissions: sampleProblemSubmissions,
+      queryMode: 'problem',
+    });
+
+    await user.click(screen.getByRole('tab', { name: '首 AC handle' }));
+
+    expect(screen.getByText('16 人 · 第 1/2 页')).not.toBeNull();
+    await user.click(within(screen.getByLabelText('题目首 AC handle 分页')).getByRole('button', { name: '下一页' }));
+    await user.selectOptions(screen.getByLabelText('每页首 AC 数'), '50');
+
+    expect(onProblemFirstAcceptedPageChange).toHaveBeenCalledWith(2, 15);
+    expect(onProblemFirstAcceptedPageChange).toHaveBeenCalledWith(1, 50);
   });
 
   it('keeps single-user details hidden before a single query is submitted', async () => {
@@ -314,14 +666,15 @@ describe('TrainingQueryPanel', () => {
     expect(screen.queryByRole('table', { name: '最近通过明细' })).toBeNull();
   });
 
-  it('starts single-user query without prefilled identity or range', async () => {
+  it('keeps single-user auto-query idle without a selected identity', async () => {
     const user = userEvent.setup();
+    const onApplyQuery = vi.fn().mockResolvedValue(undefined);
     renderTrainingQueryPanel({
       acceptedFromDateUtcPlus8: '2026-06-30',
       acceptedToDateUtcPlus8: '2026-07-06',
       minProblemRating: '1200',
       maxProblemRating: '2400',
-    }, vi.fn(), {
+    }, onApplyQuery, {
       firstAccepted: null,
       selectedIdentity: null,
       submissions: null,
@@ -330,14 +683,15 @@ describe('TrainingQueryPanel', () => {
 
     await user.click(screen.getByRole('tab', { name: '单人查询' }));
 
-    expect((screen.getByLabelText('选手') as HTMLSelectElement).value).toBe('');
-    expect(screen.getByRole('option', { name: '请选择选手' })).not.toBeNull();
-    expect((screen.getByLabelText('通过起始日期') as HTMLInputElement).value).toBe('');
-    expect((screen.getByLabelText('通过结束日期') as HTMLInputElement).value).toBe('');
-    expect((screen.getByLabelText('最低 rating') as HTMLInputElement).value).toBe('');
-    expect((screen.getByLabelText('最高 rating') as HTMLInputElement).value).toBe('');
-    expect(screen.getByText('当前范围：全量日期 / 全 rating')).not.toBeNull();
-    expect((screen.getByRole('button', { name: '查询' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('队员') as HTMLSelectElement).value).toBe('');
+    expect(screen.getByRole('option', { name: '请选择队员' })).not.toBeNull();
+    expect((screen.getByLabelText('通过起始日期') as HTMLInputElement).value).toBe('2026-06-30');
+    expect((screen.getByLabelText('通过结束日期') as HTMLInputElement).value).toBe('2026-07-06');
+    expect((screen.getByLabelText('最低 rating') as HTMLInputElement).value).toBe('1200');
+    expect((screen.getByLabelText('最高 rating') as HTMLInputElement).value).toBe('2400');
+    expect(screen.queryByText(/^当前范围：/)).toBeNull();
+    expect(screen.queryByRole('button', { name: '查询' })).toBeNull();
+    expect(onApplyQuery).not.toHaveBeenCalled();
   });
 
   it('switches to recently accepted problems with problem name, metadata and accepted time', async () => {
@@ -365,25 +719,24 @@ describe('TrainingQueryPanel', () => {
     expect(screen.queryByLabelText('每页提交数')).toBeNull();
   });
 
-  it('keeps edited range as a draft until the query action is submitted', async () => {
+  it('auto-applies edited range without a query action', async () => {
     const user = userEvent.setup();
     const onApplyQuery = vi.fn().mockResolvedValue(undefined);
     renderTrainingQueryPanel(emptyQuery, onApplyQuery);
 
     await user.type(screen.getByLabelText('最低 rating'), '2000');
 
-    expect(screen.getByText('当前范围：全量日期 / 全 rating')).not.toBeNull();
-    expect(screen.getByText('已编辑为 全量日期 / 2000 ~ 不限，点击查询后生效。')).not.toBeNull();
+    expect(screen.queryByText(/^当前范围：/)).toBeNull();
+    expect(screen.queryByText(/点击查询后生效/)).toBeNull();
+    expect(screen.queryByRole('button', { name: '查询' })).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: '查询' }));
-
-    expect(onApplyQuery).toHaveBeenCalledWith({
+    await waitFor(() => expect(onApplyQuery).toHaveBeenLastCalledWith({
       ...emptyQuery,
       minProblemRating: '2000',
-    }, 'multiple');
+    }, 'multiple'));
   });
 
-  it('submits single-user queries with single mode after switching tabs', async () => {
+  it('auto-runs single-user queries with single mode after switching tabs', async () => {
     const user = userEvent.setup();
     const onApplyQuery = vi.fn().mockResolvedValue(undefined);
     renderTrainingQueryPanel(emptyQuery, onApplyQuery, {
@@ -392,19 +745,38 @@ describe('TrainingQueryPanel', () => {
     });
 
     await user.click(screen.getByRole('tab', { name: '单人查询' }));
-    await user.click(screen.getByRole('button', { name: '查询' }));
 
-    expect(onApplyQuery).toHaveBeenCalledWith(emptyQuery, 'single');
+    await waitFor(() => expect(onApplyQuery).toHaveBeenCalledWith(emptyQuery, 'single'));
   });
 
-  it('resets the applied query range to the full dataset', async () => {
+  it('auto-runs single-user query after changing the selected member', async () => {
     const user = userEvent.setup();
     const onApplyQuery = vi.fn().mockResolvedValue(undefined);
-    renderTrainingQueryPanel({ ...emptyQuery, minProblemRating: '2000' }, onApplyQuery);
+    renderTrainingQueryPanel(emptyQuery, onApplyQuery, {
+      firstAccepted: null,
+      queryMode: 'single',
+      selectedIdentity: '230511213黄炳睿',
+      studentOptions: ['230511213黄炳睿', '9999999托宝'],
+      submissions: null,
+    });
 
-    await user.click(screen.getByRole('button', { name: '重置' }));
+    await user.selectOptions(screen.getByLabelText('队员'), '9999999托宝');
 
-    expect(onApplyQuery).toHaveBeenCalledWith(emptyQuery, 'multiple');
+    await waitFor(() => expect(onApplyQuery).toHaveBeenLastCalledWith(emptyQuery, 'single'));
+  });
+
+  it('auto-runs the current query after switching OJ', async () => {
+    const user = userEvent.setup();
+    const onApplyQuery = vi.fn().mockResolvedValue(undefined);
+    const onOjNameChange = vi.fn();
+    renderTrainingQueryPanel(emptyQuery, onApplyQuery, {
+      onOjNameChange,
+    });
+
+    await user.selectOptions(screen.getByLabelText('选择 OJ'), OJ_NAMES.ATCODER);
+
+    expect(onOjNameChange).toHaveBeenCalledWith(OJ_NAMES.ATCODER);
+    await waitFor(() => expect(onApplyQuery).toHaveBeenLastCalledWith(emptyQuery, 'multiple'));
   });
 
   it('blocks reversed rating ranges before calling the query API', async () => {
@@ -413,13 +785,15 @@ describe('TrainingQueryPanel', () => {
     renderTrainingQueryPanel(emptyQuery, onApplyQuery);
 
     await user.type(screen.getByLabelText('最低 rating'), '2500');
+    await waitFor(() => expect(onApplyQuery).toHaveBeenLastCalledWith({
+      ...emptyQuery,
+      minProblemRating: '2500',
+    }, 'multiple'));
+    onApplyQuery.mockClear();
     await user.type(screen.getByLabelText('最高 rating'), '2000');
 
-    const queryButton = screen.getByRole('button', { name: '查询' }) as HTMLButtonElement;
     expect(screen.getByText('最低 rating 不能大于最高 rating。')).not.toBeNull();
-    expect(queryButton.disabled).toBe(true);
-
-    await user.click(queryButton);
+    expect(screen.queryByRole('button', { name: '查询' })).toBeNull();
 
     expect(onApplyQuery).not.toHaveBeenCalled();
   });

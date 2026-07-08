@@ -60,6 +60,10 @@ AUTH_BOOTSTRAP_ADMIN_PASSWORD=change-me-root-password
 The two `*_VOLUME_NAME` values are the persistent MySQL Docker volume names. Keep them stable across deploys.
 Changing them makes Compose mount a different database volume, which can look like the database was reset.
 
+The auth service also reads `AUTH_JWT_ACCESS_TOKEN_TTL` for ordinary logins and
+`AUTH_JWT_REMEMBER_ME_ACCESS_TOKEN_TTL` for remember-me logins. The defaults in
+`deploy/.env.example` are `2h` and `30d`.
+
 Deploy:
 
 ```bash
@@ -150,7 +154,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
 ```
 
 The front-end container serves the built React workbench and proxies same-origin
-`/api/auth/**` and `/api/training-data/**` requests to the backend services.
+`/api/auth/**`, `/api/training-data/**`, health, and module-info requests to the
+backend services.
 For frontend-only changes after a deploy, use:
 
 ```bash
@@ -160,8 +165,8 @@ For frontend-only changes after a deploy, use:
 That command rebuilds `frontend/dist`, keeps the fixed Nginx container, and
 reloads Nginx instead of rebuilding backend images.
 
-To load local Codeforces fixture data through real HTTP APIs after the first
-deploy:
+To create sample users and start a Codeforces collection job through real HTTP
+APIs after the first deploy:
 
 ```bash
 ./scripts/seed-local-codeforces-data.sh
