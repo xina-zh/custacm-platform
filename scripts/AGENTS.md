@@ -1,22 +1,8 @@
 # Scripts Agent Notes
 
-This directory owns repository operation scripts.
-
-- Keep scripts compatible with the target shell already used in this repo.
-- Do not add scripts that require real secrets in committed files.
-- If a script changes deployment behavior, update [../deploy/UPDATE.md](../deploy/UPDATE.md) and [../docs/server-deployment.md](../docs/server-deployment.md).
-- If doc-sync behavior changes, update [../docs/agent/doc-sync.md](../docs/agent/doc-sync.md) and [../docs/doc-sync-map.tsv](../docs/doc-sync-map.tsv).
-- If test-policy behavior changes, update [../docs/agent/quality-gates.md](../docs/agent/quality-gates.md) and [../docs/test-policy-allowlist.tsv](../docs/test-policy-allowlist.tsv) when needed.
-
-Current scripts:
-
-- `deploy.sh` - local Compose deploy using `deploy/.env`, including the frontend static build step.
-- `server-deploy.sh` - server fast-forward deploy flow, including the frontend static build step.
-- `update-module.sh` - single module update for `auth-web`, `training-data-web`, or `frontend`; frontend updates rebuild `frontend/dist` and reload Nginx instead of rebuilding a frontend image.
-- `auto-update-main.sh` - conservative fast-forward auto update with path classification for auth, training-data, and frontend runtime containers.
-- `seed-local-codeforces-data.sh` - local sample-user seeding through real auth/training-data HTTP APIs without printing tokens or passwords; it creates OJ handle bindings with a `CODEFORCES` entry in the `handles` map and starts a Codeforces collection job.
-- `install-log-mcp-server.sh` - installs the pinned read-only log MCP helper.
-- `check-doc-sync.sh` - verifies code/config changes include matching doc updates.
-- `check-test-policy.sh` - verifies Java modules have tests and generated test/coverage reports unless allowlisted.
-
-`auto-update-main.sh` classifies changes under `platform-auth/auth-domain`, `auth-app`, `auth-core`, `auth-infra`, and `auth-web` as `auth-web` module updates; `platform-training-data/training-data-codeforces` and `training-data-web` as `training-data-web`; and `frontend/*` as `frontend`.
+- Keep scripts compatible with their declared shell and never commit real secrets.
+- There are exactly two startup entrypoints: `dev.sh` keeps the Docker database/Redis/API running without forcing backend rebuilds and runs both Vue frontends through Vite/HMR; `deploy.sh` builds and starts the complete stable four-service Compose stack and checks all public paths.
+- `dev.sh` stops the production Nginx frontend while it owns ports 4180/5173 in the foreground; Ctrl-C stops both Vite processes but leaves backend containers running. `deploy.sh` switches back to the Nginx production frontend.
+- Do not add module-only deployment scripts, a wrapper under `deploy/`, a third startup mode, or scripts that pull Git implicitly.
+- `check-doc-sync.sh` and `check-test-policy.sh` enforce documentation and Java test/report policy.
+- Deployment changes require synchronized `deploy/README.md`, `deploy/UPDATE.md` and `docs/server-deployment.md` updates.

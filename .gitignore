@@ -1,5 +1,6 @@
 target/
 **/target/
+.superpowers/
 
 .idea/
 *.iml
@@ -8,6 +9,7 @@ target/
 
 *.log
 logs/
+uploads/
 
 deploy/.env
 deploy/secrets/*.pem
