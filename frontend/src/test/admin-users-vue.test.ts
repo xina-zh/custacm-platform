@@ -1,5 +1,5 @@
 // Author: huangbingrui.awa
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 import AdminUserManagementPanel from '../components/AdminUserManagementPanel.vue';
@@ -10,7 +10,7 @@ import { parseBatchUserInput, parseCreateUserRows } from '../utils/adminUsers';
 
 const jianglyUser: AdminUserMutationResponse = {
   user: { id: 99, username: 'ui-test-jiangly', nickname: '临时测试', email: '', avatar: '/api/image/jiangly.png', role: 'ROLE_player', createTime: '2026-07-12T00:00:00', updateTime: '2026-07-12T00:00:00' },
-  handles: { CODEFORCES: 'jiangly', ATCODER: 'jiangly' }, needCollect: true, generatedPassword: null, reloginRequired: false,
+  handles: { CODEFORCES: 'jiangly', ATCODER: 'jiangly' }, needCollect: true, collectionStates: {}, generatedPassword: null, reloginRequired: false,
 };
 
 describe('Vue admin user import', () => {
@@ -34,7 +34,6 @@ describe('Vue admin user import', () => {
   });
 
   it('fills the creation form and submits both jiangly handles', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const batchCreateUsers = vi.fn().mockResolvedValue([jianglyUser]);
     const dashboard = { batchCreateUsers } as unknown as ReturnType<typeof usePlatformDashboard>;
     const wrapper = mount(CreateUsersPanel, { props: { dashboard } });
@@ -46,18 +45,21 @@ describe('Vue admin user import', () => {
     ]);
     await wrapper.get('form').trigger('submit');
 
+    expect(wrapper.get('[role="alertdialog"]').text()).toContain('即将创建 1 个账号');
+    expect(batchCreateUsers).not.toHaveBeenCalled();
+    await wrapper.get('.admin-confirm-primary').trigger('click');
+    await flushPromises();
+
     expect(batchCreateUsers).toHaveBeenCalledWith([expect.objectContaining({
       username: 'ui-test-jiangly', nickname: '临时测试', handles: { CODEFORCES: 'jiangly', ATCODER: 'jiangly' },
     })]);
   });
 
   it('modifies and deletes the temporary jiangly user', async () => {
-    const updated = { ...jianglyUser, user: { ...jianglyUser.user, nickname: '已修改' } };
-    const patchUser = vi.fn().mockResolvedValue(updated);
-    const retired = { ...updated, needCollect: false };
-    const updateOjHandles = vi.fn().mockResolvedValue(retired);
+    const retired = { ...jianglyUser, user: { ...jianglyUser.user, nickname: '已修改' }, needCollect: false };
+    const updateUser = vi.fn().mockResolvedValue(retired);
     const deleteUser = vi.fn().mockResolvedValue(undefined);
-    const dashboard = { adminUsers: ref([jianglyUser]), patchUser, updateOjHandles, deleteUser } as unknown as ReturnType<typeof usePlatformDashboard>;
+    const dashboard = { adminUsers: ref([jianglyUser]), updateUser, deleteUser } as unknown as ReturnType<typeof usePlatformDashboard>;
     const wrapper = mount(AdminUserManagementPanel, { props: { dashboard, currentUsername: 'administrator' } });
 
     await wrapper.get('.reference-edit-button').trigger('click');
@@ -65,12 +67,14 @@ describe('Vue admin user import', () => {
     await wrapper.get('input[aria-label="编辑 nickname"]').setValue('已修改');
     await wrapper.get('input[aria-label="编辑 needCollect"]').setValue(false);
     await wrapper.get('.admin-user-edit-form').trigger('submit');
-    expect(patchUser).toHaveBeenCalledWith('ui-test-jiangly', expect.objectContaining({ nickname: '已修改' }));
-    expect(updateOjHandles).toHaveBeenCalledWith('ui-test-jiangly', {
+    expect(updateUser).toHaveBeenCalledWith('ui-test-jiangly', expect.objectContaining({
+      nickname: '已修改',
       handles: { CODEFORCES: 'jiangly', ATCODER: 'jiangly' }, needCollect: false,
-    });
+    }));
     expect(wrapper.get('.admin-notice').text()).toContain('用户修改已保存');
+    expect(wrapper.find('.admin-user-edit-form').exists()).toBe(false);
 
+    await wrapper.get('.reference-edit-button').trigger('click');
     await wrapper.get('.danger-button').trigger('click');
     expect(wrapper.get('[role="alertdialog"]').text()).toContain('ui-test-jiangly · 临时测试');
     expect(wrapper.get('[role="alertdialog"]').text()).toContain('训练数据会被清理');
@@ -81,10 +85,9 @@ describe('Vue admin user import', () => {
 
   it('persists collection status even when the user has no OJ handles', async () => {
     const noHandleUser = { ...jianglyUser, handles: {}, needCollect: null };
-    const patchUser = vi.fn().mockResolvedValue(noHandleUser);
     const retired = { ...noHandleUser, needCollect: false };
-    const updateOjHandles = vi.fn().mockResolvedValue(retired);
-    const dashboard = { adminUsers: ref([noHandleUser]), patchUser, updateOjHandles } as unknown as ReturnType<typeof usePlatformDashboard>;
+    const updateUser = vi.fn().mockResolvedValue(retired);
+    const dashboard = { adminUsers: ref([noHandleUser]), updateUser } as unknown as ReturnType<typeof usePlatformDashboard>;
     const wrapper = mount(AdminUserManagementPanel, { props: { dashboard, currentUsername: 'administrator' } });
 
     await wrapper.get('.reference-edit-button').trigger('click');
@@ -92,33 +95,45 @@ describe('Vue admin user import', () => {
     await toggle.setValue(false);
     await wrapper.get('.admin-user-edit-form').trigger('submit');
 
-    expect(updateOjHandles).toHaveBeenCalledWith('ui-test-jiangly', { handles: {}, needCollect: false });
-    expect(wrapper.get('.collect-toggle-field').text()).toContain('现役队员继续自动收集数据');
+    expect(updateUser).toHaveBeenCalledWith('ui-test-jiangly', expect.objectContaining({ handles: {}, needCollect: false }));
+    expect(wrapper.find('.admin-user-edit-form').exists()).toBe(false);
   });
 
   it('requires a danger confirmation before replacing an OJ handle', async () => {
-    const patched = { ...jianglyUser, user: { ...jianglyUser.user, nickname: '已修改' } };
-    const updateOjHandles = vi.fn().mockResolvedValue(patched);
-    const replaced = { ...patched, handles: { ...patched.handles, CODEFORCES: 'Benq' } };
-    const patchUser = vi.fn().mockResolvedValue(patched);
-    const replaceOjHandle = vi.fn().mockResolvedValue(replaced);
-    const dashboard = { adminUsers: ref([jianglyUser]), patchUser, updateOjHandles, replaceOjHandle } as unknown as ReturnType<typeof usePlatformDashboard>;
+    const replaced = { ...jianglyUser, handles: { ...jianglyUser.handles, CODEFORCES: 'Benq' } };
+    const updateUser = vi.fn().mockResolvedValue(replaced);
+    const dashboard = { adminUsers: ref([jianglyUser]), updateUser } as unknown as ReturnType<typeof usePlatformDashboard>;
     const wrapper = mount(AdminUserManagementPanel, { props: { dashboard, currentUsername: 'administrator' } });
 
     await wrapper.get('.reference-edit-button').trigger('click');
     await wrapper.get('input[aria-label="编辑 Codeforces handle"]').setValue('Benq');
     await wrapper.get('.admin-user-edit-form').trigger('submit');
 
-    expect(patchUser).not.toHaveBeenCalled();
+    expect(updateUser).not.toHaveBeenCalled();
     expect(wrapper.get('[role="alertdialog"]').text()).toContain('高危操作');
     expect(wrapper.get('[role="alertdialog"]').text()).toContain('jiangly→Benq');
     expect(wrapper.get('[role="alertdialog"]').text()).toContain('全部 ODS 与数仓训练记录');
 
     await wrapper.get('.confirm-user-delete-button').trigger('click');
-    expect(updateOjHandles).toHaveBeenCalledWith('ui-test-jiangly', {
-      handles: { ATCODER: 'jiangly' }, needCollect: true,
-    });
-    expect(replaceOjHandle).toHaveBeenCalledWith('ui-test-jiangly', 'CODEFORCES', 'Benq');
+    await flushPromises();
+    expect(updateUser).toHaveBeenCalledWith('ui-test-jiangly', expect.objectContaining({
+      handles: { CODEFORCES: 'Benq', ATCODER: 'jiangly' }, needCollect: true,
+    }));
+    expect(wrapper.find('.admin-user-edit-form').exists()).toBe(false);
+  });
+
+  it('keeps the edit form expanded when saving fails', async () => {
+    const updateUser = vi.fn().mockRejectedValue(new Error('保存失败'));
+    const dashboard = { adminUsers: ref([jianglyUser]), updateUser } as unknown as ReturnType<typeof usePlatformDashboard>;
+    const wrapper = mount(AdminUserManagementPanel, { props: { dashboard, currentUsername: 'administrator' } });
+
+    await wrapper.get('.reference-edit-button').trigger('click');
+    await wrapper.get('input[aria-label="编辑 nickname"]').setValue('无法保存的修改');
+    await wrapper.get('.admin-user-edit-form').trigger('submit');
+
+    expect(wrapper.get('.form-error').text()).toContain('保存失败');
+    expect(wrapper.find('.admin-user-edit-form').exists()).toBe(true);
+    expect((wrapper.get('input[aria-label="编辑 nickname"]').element as HTMLInputElement).value).toBe('无法保存的修改');
   });
 
   it('keeps avatar, account details and OJ handles together in the wide profile cell', () => {
@@ -137,11 +152,25 @@ describe('Vue admin user import', () => {
     expect(profile.find('.reference-handle-list').exists()).toBe(true);
   });
 
+  it('filters the loaded user list by a username substring', async () => {
+    const secondUser = {
+      ...jianglyUser,
+      user: { ...jianglyUser.user, id: 100, username: 'player-alice', nickname: 'Alice' },
+    };
+    const dashboard = { adminUsers: ref([jianglyUser, secondUser]) } as unknown as ReturnType<typeof usePlatformDashboard>;
+    const wrapper = mount(AdminUserManagementPanel, { props: { dashboard, currentUsername: 'administrator' } });
+
+    await wrapper.get('input[aria-label="查询 username"]').setValue('JIANG');
+
+    expect(wrapper.findAll('.reference-user-table tbody > tr:not(.admin-user-edit-row)')).toHaveLength(1);
+    expect(wrapper.get('.reference-user-name').text()).toContain('ui-test-jiangly');
+    expect(wrapper.get('.reference-count').text()).toContain('1个账号');
+  });
+
   it('renders root as a protected administrator without player status or handles', async () => {
     const root = { ...jianglyUser, user: { ...jianglyUser.user, username: 'root', role: 'ROLE_admin' as const }, handles: {}, needCollect: null };
-    const patchUser = vi.fn().mockResolvedValue(root);
-    const updateOjHandles = vi.fn();
-    const dashboard = { adminUsers: ref([root]), patchUser, updateOjHandles } as unknown as ReturnType<typeof usePlatformDashboard>;
+    const updateUser = vi.fn().mockResolvedValue(root);
+    const dashboard = { adminUsers: ref([root]), updateUser } as unknown as ReturnType<typeof usePlatformDashboard>;
     const wrapper = mount(AdminUserManagementPanel, { props: { dashboard, currentUsername: 'root' } });
 
     expect(wrapper.get('.reference-status-list').text()).toBe('管理员');
@@ -151,7 +180,7 @@ describe('Vue admin user import', () => {
     expect(wrapper.find('input[aria-label="编辑 Codeforces handle"]').exists()).toBe(false);
     expect(wrapper.find('.danger-button').exists()).toBe(false);
     await wrapper.get('.admin-user-edit-form').trigger('submit');
-    expect(updateOjHandles).not.toHaveBeenCalled();
+    expect(updateUser).toHaveBeenCalledWith('root', expect.not.objectContaining({ handles: expect.anything() }));
   });
 
   it('identifies the row when an imported password is too short', async () => {

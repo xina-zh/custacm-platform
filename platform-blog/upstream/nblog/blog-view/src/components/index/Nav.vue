@@ -20,7 +20,7 @@
 				</template>
 			</el-dropdown>
 			<el-dropdown class="nav-training-dropdown" trigger="click" :class="{'m-mobile-hide': mobileHide}" @command="trainingRoute">
-				<button type="button" class="el-dropdown-link item nav-training-trigger" :class="{'active':$route.name==='training'}">
+				<button type="button" class="el-dropdown-link item nav-training-trigger" :class="{'active':trainingNavigationActive}">
 					<i class="chart bar icon"></i>训练中心<i class="caret down icon"></i>
 				</button>
 				<template #dropdown>
@@ -45,10 +45,27 @@
 					<button v-for="item in queryResult" :key="item.id || item.title" type="button"
 					        :disabled="!item.id" @mousedown.prevent="handleSelect(item)">
 						<span class="title">{{ item.title }}</span>
-						<span v-if="item.content" class="content">{{ item.content }}</span>
+						<span v-if="item.description" class="description">{{ item.description }}</span>
 					</button>
 				</div>
 			</div>
+			<button
+				type="button"
+				class="item nav-theme-toggle"
+				:class="{'m-mobile-hide': mobileHide}"
+				role="switch"
+				:aria-label="themeToggleLabel"
+				:aria-checked="darkTheme ? 'true' : 'false'"
+				:title="themeToggleLabel"
+				@click.stop="switchTheme"
+			>
+				<span class="nav-theme-track" :class="{'is-dark': darkTheme}" aria-hidden="true">
+					<span class="nav-theme-thumb">
+						<i :class="[darkTheme ? 'moon' : 'sun', 'outline', 'icon']"></i>
+					</span>
+				</span>
+				<span class="nav-theme-status">{{ darkTheme ? '深夜模式' : '日间模式' }}</span>
+			</button>
 			<router-link v-if="!authUser" :to="loginTarget" class="item" :class="{'m-mobile-hide': mobileHide}">
 				<i class="user outline icon"></i>登录
 			</router-link>
@@ -82,6 +99,7 @@
 	import {getSearchBlogList} from "@/api/blog";
 	import {accountMenuItems} from "@/auth/account-menu";
 	import {clearSession, readUser, SESSION_CHANGE_EVENT} from "@/auth/session";
+	import {getCurrentTheme, THEME_CHANGE_EVENT, toggleTheme} from '@/theme'
 	import {mapState} from 'vuex'
 
 	export default {
@@ -95,6 +113,7 @@
 		data() {
 			return {
 				authUser: readUser(),
+				darkTheme: getCurrentTheme() === 'dark',
 				mobileHide: true,
 				queryString: '',
 				queryResult: [],
@@ -105,11 +124,18 @@
 		},
 		computed: {
 			...mapState(['clientSize']),
+			trainingNavigationActive() {
+				return this.$route.name === 'training'
+					&& /^\/training\/(?:multiple|single|problem)\/?$/.test(this.$route.path)
+			},
 			loginTarget() {
 				return {path: '/training/login', query: {returnTo: this.$route.fullPath || '/home'}}
 			},
 			accountItems() {
 				return accountMenuItems(this.authUser)
+			},
+			themeToggleLabel() {
+				return this.darkTheme ? '当前深夜模式，切换到日间模式' : '当前日间模式，切换到深夜模式'
 			}
 		},
 		watch: {
@@ -121,6 +147,7 @@
 		mounted() {
 			window.addEventListener('storage', this.handleStorage)
 			window.addEventListener(SESSION_CHANGE_EVENT, this.refreshAuthUser)
+			window.addEventListener(THEME_CHANGE_EVENT, this.refreshTheme)
 			//监听页面滚动位置，改变导航栏的显示
 			window.addEventListener('scroll', () => {
 				//首页且不是移动端
@@ -145,11 +172,18 @@
 		beforeUnmount() {
 			window.removeEventListener('storage', this.handleStorage)
 			window.removeEventListener(SESSION_CHANGE_EVENT, this.refreshAuthUser)
+			window.removeEventListener(THEME_CHANGE_EVENT, this.refreshTheme)
 		},
 		methods: {
+			switchTheme() {
+				this.darkTheme = toggleTheme() === 'dark'
+			},
+			refreshTheme(event) {
+				this.darkTheme = (event?.detail?.theme || getCurrentTheme()) === 'dark'
+			},
 			accountCommand(command) {
 				if (command === 'profile') {
-					this.$router.push('/about')
+					this.$router.push('/profile')
 				} else if (command === 'admin' && this.authUser?.role === 'ROLE_admin') {
 					this.$router.push('/training/admin')
 				} else if (command === 'logout') {
@@ -307,6 +341,75 @@
 		font: inherit;
 	}
 
+	.nav-theme-toggle {
+		display: flex !important;
+		min-width: 76px;
+		align-items: center;
+		justify-content: center;
+		border: 0;
+		background: transparent;
+		color: rgba(255, 255, 255, .9);
+		padding-right: 11px !important;
+		padding-left: 11px !important;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.nav-theme-track {
+		position: relative;
+		display: block;
+		width: 52px;
+		height: 28px;
+		border: 1px solid rgba(255, 255, 255, .32);
+		border-radius: 999px;
+		background: rgba(255, 255, 255, .12);
+		box-shadow: inset 0 1px 3px rgba(0, 0, 0, .25);
+		transition: border-color .2s ease, background-color .2s ease;
+	}
+
+	.nav-theme-thumb {
+		position: absolute;
+		top: 3px;
+		left: 3px;
+		display: grid;
+		width: 20px;
+		height: 20px;
+		place-items: center;
+		border-radius: 50%;
+		background: #f2e8dc;
+		color: #9a5b1e;
+		box-shadow: 0 2px 7px rgba(0, 0, 0, .32);
+		transform: translateX(0);
+		transition: transform .2s ease, background-color .2s ease, color .2s ease;
+	}
+
+	.nav-theme-track.is-dark .nav-theme-thumb {
+		background: #d9944a;
+		color: #21150c;
+		transform: translateX(24px);
+	}
+
+	.nav-theme-thumb > i.icon {
+		width: 1em;
+		margin: 0 !important;
+		font-size: 12px;
+	}
+
+	.nav-theme-toggle:focus-visible {
+		outline: 2px solid #d9944a;
+		outline-offset: -4px;
+	}
+
+	.nav-theme-status {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
 	.el-dropdown-menu {
 		margin: 0 !important;
 		padding: 6px 0 !important;
@@ -441,7 +544,7 @@
 		color: rgba(0, 0, 0, 0.87);
 	}
 
-	.m-search-panel .content {
+	.m-search-panel .description {
 		display: block;
 		text-overflow: ellipsis;
 		overflow: hidden;

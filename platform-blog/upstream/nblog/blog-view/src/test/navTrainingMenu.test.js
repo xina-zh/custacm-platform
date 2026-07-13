@@ -10,6 +10,9 @@ vi.mock('@/api/blog', () => ({
 
 beforeEach(() => {
 	getSearchBlogList.mockReset()
+	document.documentElement.classList.remove('dark')
+	delete document.documentElement.dataset.theme
+	document.documentElement.style.removeProperty('color-scheme')
 	Object.defineProperty(window, 'localStorage', {
 		configurable: true,
 		value: {
@@ -20,7 +23,7 @@ beforeEach(() => {
 	})
 })
 
-function mountNav() {
+function mountNav(route = {name: 'training', path: '/training/multiple', fullPath: '/training/multiple?oj=CODEFORCES'}) {
 	const push = vi.fn()
 	const wrapper = shallowMount(Nav, {
 		props: {categoryList: []},
@@ -36,7 +39,7 @@ function mountNav() {
 				},
 			},
 			mocks: {
-				$route: {name: 'training', path: '/training/multiple', fullPath: '/training/multiple?oj=CODEFORCES'},
+				$route: route,
 				$router: {push},
 				$store: {state: {clientSize: {clientWidth: 1440, clientHeight: 900}}},
 			},
@@ -65,6 +68,40 @@ describe('training navigation dropdown', () => {
 		wrapper.vm.trainingRoute('single')
 		expect(push).toHaveBeenCalledWith('/training/single')
 	})
+
+	it('does not mark training navigation active on administrator pages', () => {
+		const queryPage = mountNav().wrapper
+		const adminPage = mountNav({name: 'training', path: '/training/admin/users', fullPath: '/training/admin/users'}).wrapper
+
+		expect(queryPage.get('.nav-training-trigger').classes()).toContain('active')
+		expect(adminPage.get('.nav-training-trigger').classes()).not.toContain('active')
+	})
+})
+
+describe('theme navigation control', () => {
+	it('shows the current mode and next action, then switches without routing', async () => {
+		const {wrapper, push} = mountNav()
+		const toggle = wrapper.get('.nav-theme-toggle')
+
+		expect(toggle.element.tagName).toBe('BUTTON')
+		expect(toggle.attributes('type')).toBe('button')
+		expect(toggle.attributes('role')).toBe('switch')
+		expect(toggle.attributes('aria-checked')).toBe('false')
+		expect(toggle.attributes('aria-label')).toBe('当前日间模式，切换到深夜模式')
+		expect(toggle.get('.nav-theme-thumb i').classes()).toContain('sun')
+		expect(toggle.text()).toContain('日间模式')
+
+		await toggle.trigger('click')
+
+		expect(window.localStorage.setItem).toHaveBeenCalledWith('custacm.theme', 'dark')
+		expect(document.documentElement.dataset.theme).toBe('dark')
+		expect(document.documentElement.classList.contains('dark')).toBe(true)
+		expect(toggle.attributes('aria-checked')).toBe('true')
+		expect(toggle.attributes('aria-label')).toBe('当前深夜模式，切换到日间模式')
+		expect(toggle.get('.nav-theme-thumb i').classes()).toContain('moon')
+		expect(push).not.toHaveBeenCalled()
+		wrapper.unmount()
+	})
 })
 
 describe('public article search', () => {
@@ -83,7 +120,7 @@ describe('public article search', () => {
 
 	it('requests only on submit and then exposes public article suggestions', async () => {
 		const {wrapper} = mountNav()
-		const results = [{id: 7, title: '公开文章', content: '命中的正文片段'}]
+		const results = [{id: 7, title: '公开文章', description: '这是一段文章简介'}]
 		getSearchBlogList.mockResolvedValue({code: 200, data: results})
 		wrapper.vm.queryString = '  训练  '
 
@@ -93,6 +130,7 @@ describe('public article search', () => {
 		expect(wrapper.vm.queryResult).toEqual(results)
 		expect(wrapper.vm.searchOpen).toBe(true)
 		expect(wrapper.vm.searchLoading).toBe(false)
+		expect(wrapper.get('.m-search-panel .description').text()).toBe('这是一段文章简介')
 	})
 
 	it('does not request blank or invalid submissions', async () => {
@@ -115,5 +153,15 @@ describe('login return path', () => {
 			path: '/training/login',
 			query: {returnTo: '/training/multiple?oj=CODEFORCES'},
 		})
+	})
+})
+
+describe('account navigation', () => {
+	it('opens the retained profile page without using the retired About route', () => {
+		const {wrapper, push} = mountNav()
+
+		wrapper.vm.accountCommand('profile')
+
+		expect(push).toHaveBeenCalledWith('/profile')
 	})
 })

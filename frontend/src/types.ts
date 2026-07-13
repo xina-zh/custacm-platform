@@ -1,8 +1,6 @@
 export type Username = string;
 export type AccountRole = 'ROLE_admin' | 'ROLE_player';
 
-export const UNLIMITED_LOOKBACK_HOURS = 1_000_000_000;
-
 export const OJ_NAMES = {
   CODEFORCES: 'CODEFORCES',
   ATCODER: 'ATCODER',
@@ -33,6 +31,9 @@ export interface AdminUserMutationResponse {
   user: CurrentUser & { id: number; createTime: string; updateTime: string };
   handles: Partial<Record<OjName, string>>;
   needCollect: boolean | null;
+  collectionStates: Partial<Record<OjName, {
+    lastCollectedAt: string | null;
+  }>>;
   generatedPassword: string | null;
   reloginRequired: boolean;
 }
@@ -47,22 +48,14 @@ export interface AdminUserCreateRequest {
   needCollect?: boolean | null;
 }
 
-export interface AdminUserPatchRequest {
-  newUsername?: Username | null;
-  nickname?: string | null;
-  email?: string | null;
-  role?: AccountRole | null;
+export interface AdminUserUpdateRequest {
+  newUsername: Username;
+  nickname: string;
+  email: string;
+  role: AccountRole;
   password?: string | null;
-}
-
-export interface OjHandlesUpdateRequest {
   handles?: Partial<Record<OjName, string>> | null;
   needCollect?: boolean | null;
-}
-
-export interface OjHandleReplaceRequest {
-  ojName: OjName;
-  newHandle: string;
 }
 
 export interface CollectionJobStartRequest {
@@ -111,11 +104,6 @@ export interface CollectionJob {
   items: CollectionJobItem[];
 }
 
-export interface WarehouseRefreshRequest {
-  batchId: string | null;
-  startFromTaskId: string | null;
-}
-
 export type WarehouseRefreshStatus = 'SUCCESS' | 'FAILED';
 export type WarehouseRefreshTaskStatus = 'SUCCESS' | 'FAILED' | 'SKIPPED';
 
@@ -156,10 +144,12 @@ export interface AdminArticle {
   firstPicture: string;
   createTime: string;
   updateTime: string;
+	deletedAt?: string;
   published: boolean;
   recommend: boolean;
   top: boolean;
   category: { id: number; name: string } | null;
+	user?: { username: string; nickname?: string | null } | null;
 }
 
 export interface AdminArticlePage {

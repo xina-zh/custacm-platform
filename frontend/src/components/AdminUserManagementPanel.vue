@@ -2,7 +2,7 @@
   <section class="admin-user-management-panel admin-reference-page" aria-label="管理用户信息">
     <header class="reference-page-header">
       <span class="reference-page-icon"><UsersRound :size="22" /></span>
-      <div><h2>管理用户信息</h2><p>按学号姓名升序展示；在列表中直接修改角色、密码、OJ handle 和现役状态。</p></div>
+      <div><h2>管理用户信息</h2><p>按 username 查询账号；在列表中直接修改角色、密码、OJ handle 和现役状态。</p></div>
     </header>
     <p v-if="notice" class="admin-notice" role="status">{{ notice }}</p>
     <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
@@ -13,13 +13,14 @@
       <div v-if="pendingRelogin" class="one-time-password-actions"><button class="primary-button" type="button" @click="confirmedRelogin">我已保存，重新登录</button></div>
     </section>
 
-    <div class="reference-count"><strong>{{ sortedUsers.length }}</strong><span>个账号</span></div>
+    <label class="admin-user-search"><span>查询 username</span><span class="admin-user-search-control"><Search :size="16" /><input v-model="usernameQuery" aria-label="查询 username" placeholder="输入 username 子串"></span></label>
+    <div class="reference-count"><strong>{{ filteredUsers.length }}</strong><span>个账号</span></div>
     <div class="table-shell admin-user-table-shell reference-user-table-shell">
       <table class="admin-user-table reference-user-table" aria-label="用户列表">
         <thead><tr><th>个人信息</th><th>角色 / 状态</th><th>更新时间</th><th>操作</th></tr></thead>
         <tbody>
-          <tr v-if="!sortedUsers.length"><td class="admin-user-empty" colspan="4">暂无用户</td></tr>
-          <template v-for="item in sortedUsers" :key="item.user.id || item.user.username">
+          <tr v-if="!filteredUsers.length"><td class="admin-user-empty" colspan="4">{{ usernameQuery.trim() ? '没有匹配的用户' : '暂无用户' }}</td></tr>
+          <template v-for="item in filteredUsers" :key="item.user.id || item.user.username">
             <tr :class="{ 'is-expanded': expandedUsername === item.user.username }">
               <td><div class="reference-user-profile">
                 <img class="reference-user-avatar" :src="item.user.avatar || '/img/default-avatar.jpg'" :alt="`${item.user.nickname || item.user.username} 的头像`">
@@ -52,8 +53,8 @@
     <div v-if="pendingHandleReplacement" class="user-delete-backdrop" role="presentation" @click.self="pendingHandleReplacement = null">
       <section class="user-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="handle-replace-title" aria-describedby="handle-replace-description">
         <span class="user-delete-warning-icon"><TriangleAlert :size="26" /></span>
-        <div><h3 id="handle-replace-title">确认更换 OJ handle？</h3><p id="handle-replace-description">更换 handle 是高危操作。系统将永久删除 <strong>{{ pendingHandleReplacement.username }}</strong> 在对应 OJ 下的全部 ODS 与数仓训练记录，并清除旧绑定和采集状态后绑定新 handle。</p>
-          <ul class="handle-replacement-list"><li v-for="change in pendingHandleReplacement.changes" :key="change.ojName"><strong>{{ OJ_LABELS[change.ojName] }}</strong><code>{{ change.oldHandle }}</code><span>→</span><code>{{ change.newHandle }}</code></li></ul>
+        <div><h3 id="handle-replace-title">确认变更 OJ handle？</h3><p id="handle-replace-description">更换或解绑 handle 是高危操作。系统将永久删除 <strong>{{ pendingHandleReplacement.username }}</strong> 在对应 OJ 下的全部 ODS 与数仓训练记录，并重置采集状态。</p>
+          <ul class="handle-replacement-list"><li v-for="change in pendingHandleReplacement.changes" :key="change.ojName"><strong>{{ OJ_LABELS[change.ojName] }}</strong><code>{{ change.oldHandle }}</code><span>→</span><code>{{ change.newHandle || '解绑' }}</code></li></ul>
         </div>
         <div class="user-delete-dialog-actions"><button type="button" :disabled="handleReplaceBusy" @click="pendingHandleReplacement = null">取消</button><button class="confirm-user-delete-button" type="button" :disabled="handleReplaceBusy" @click="confirmHandleReplacement"><TriangleAlert :size="16" />{{ handleReplaceBusy ? '正在更换' : '确认清理并更换' }}</button></div>
       </section>
@@ -63,7 +64,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { Copy, Save, Trash2, TriangleAlert, UserRoundCog, UsersRound, X } from '@lucide/vue';
+import { Copy, Save, Search, Trash2, TriangleAlert, UserRoundCog, UsersRound, X } from '@lucide/vue';
 import UserFields from './UserFields.vue';
 import type { usePlatformDashboard } from '../composables/usePlatformDashboard';
 import { OJ_LABELS, OJ_NAMES, type AdminUserMutationResponse, type OjName } from '../types';
@@ -73,6 +74,11 @@ import { handlesOf, userFormOf, type UserFormState } from '../utils/adminUsers';
 const props = defineProps<{ dashboard: ReturnType<typeof usePlatformDashboard>; currentUsername: string | null }>();
 const emit = defineEmits<{ guardChange: [value: boolean]; signOut: [] }>();
 const sortedUsers = computed(() => [...props.dashboard.adminUsers.value].sort((a, b) => a.user.username.localeCompare(b.user.username)));
+const usernameQuery = ref('');
+const filteredUsers = computed(() => {
+  const query = usernameQuery.value.trim().toLocaleLowerCase();
+  return query ? sortedUsers.value.filter((item) => item.user.username.toLocaleLowerCase().includes(query)) : sortedUsers.value;
+});
 const expandedUsername = ref<string | null>(null); const editForm = ref<UserFormState | null>(null); const errorMessage = ref(''); const notice = ref('');
 const passwords = ref<Array<{ username: string; password: string }>>([]); const pendingRelogin = ref(false);
 const pendingDeleteUser = ref<{ username: string; nickname: string } | null>(null); const deleteBusy = ref(false);
@@ -105,26 +111,23 @@ async function confirmHandleReplacement() {
 }
 async function executeSave(original: string, form: UserFormState, changes: HandleChange[]) {
   await run(async () => {
-    const accountResult = await props.dashboard.patchUser(original, { newUsername: form.username.trim(), nickname: form.nickname.trim(), email: form.email.trim(), role: form.role, ...(form.password ? { password: form.password } : {}) });
-    let result = accountResult;
-    if (original !== 'root') {
-      const regularHandles = handlesOf(form);
-      changes.forEach((change) => { delete regularHandles[change.ojName]; });
-      result = await props.dashboard.updateOjHandles(accountResult.user.username, { handles: regularHandles, needCollect: form.needCollect });
-      for (const change of changes) result = await props.dashboard.replaceOjHandle(result.user.username, change.ojName, change.newHandle);
-    }
-    showPasswords([accountResult]); expandedUsername.value = result.user.username; editForm.value = userFormOf(result);
-    const relogin = original === props.currentUsername && accountResult.reloginRequired;
-    pendingRelogin.value = relogin && Boolean(accountResult.generatedPassword);
+    const result = await props.dashboard.updateUser(original, {
+      newUsername: form.username.trim(), nickname: form.nickname.trim(), email: form.email.trim(), role: form.role,
+      ...(form.password ? { password: form.password } : {}),
+      ...(original === 'root' ? {} : { handles: handlesOf(form), needCollect: form.needCollect }),
+    });
+    showPasswords([result]); expandedUsername.value = null; editForm.value = null;
+    const relogin = original === props.currentUsername && result.reloginRequired;
+    pendingRelogin.value = relogin && Boolean(result.generatedPassword);
     notice.value = changes.length ? '用户修改已保存，旧 handle 的训练数据已清理。' : relogin ? '用户修改已保存，需要重新登录。' : '用户修改已保存。';
-    if (relogin && !accountResult.generatedPassword) emit('signOut');
+    if (relogin && !result.generatedPassword) emit('signOut');
   });
 }
 function handleChanges(current: AdminUserMutationResponse, form: UserFormState): HandleChange[] {
   const requested = handlesOf(form);
   return ([OJ_NAMES.CODEFORCES, OJ_NAMES.ATCODER] as OjName[]).flatMap((ojName) => {
     const oldHandle = current.handles[ojName]; const newHandle = requested[ojName];
-    return oldHandle && newHandle && oldHandle !== newHandle ? [{ ojName, oldHandle, newHandle }] : [];
+    return oldHandle && oldHandle !== newHandle ? [{ ojName, oldHandle, newHandle: newHandle || '' }] : [];
   });
 }
 function removeUser() { if (!expandedUsername.value) return; const item = props.dashboard.adminUsers.value.find((user) => user.user.username === expandedUsername.value); pendingDeleteUser.value = { username: expandedUsername.value, nickname: item?.user.nickname || '' }; }

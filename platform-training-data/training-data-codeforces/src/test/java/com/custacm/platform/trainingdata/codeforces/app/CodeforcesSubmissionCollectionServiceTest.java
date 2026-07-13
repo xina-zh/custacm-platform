@@ -179,23 +179,23 @@ class CodeforcesSubmissionCollectionServiceTest {
         assertThat(writer.records).extracting(CodeforcesOdsSubmission::codeforcesSubmissionId)
                 .containsExactly(301L, 302L);
         OjHandleAccount account = repository.findByUsername("student-0").orElseThrow();
-        assertThat(account.collectionStates().get(OjNames.CODEFORCES).historyStartReached()).isFalse();
         assertThat(account.collectionStates().get(OjNames.CODEFORCES).lastCollectedAt()).isEqualTo(FETCHED_AT);
     }
 
     @Test
-    void marksCodeforcesHistoryStartReachedWhenSourceEndIsFetched() throws Exception {
+    void firstSuccessfulCollectionCrawlsFullCodeforcesHistoryAndCreatesCursor() throws Exception {
         FakeSourceClient sourceClient = new FakeSourceClient();
         sourceClient.addPage("alice", page(submission(306, "alice", "2026-07-04T00:00:00Z")));
         RecordingWriter writer = new RecordingWriter();
         FakeHandleAccountRepository repository = new FakeHandleAccountRepository(handlesByIdentity(List.of("alice")));
+        repository.clearCollectionState("student-0", OjNames.CODEFORCES);
         CodeforcesSubmissionCollectionService service = service(repository, sourceClient, writer, 2);
 
         var result = service.collectRecentWindowForConfiguredHandles(LOOKBACK);
 
         assertThat(result.status()).isEqualTo(OjSubmissionCollectionStatus.SUCCESS);
+        assertThat(result.windowStartInclusive()).isEqualTo(Instant.EPOCH);
         OjHandleAccount account = repository.findByUsername("student-0").orElseThrow();
-        assertThat(account.collectionStates().get(OjNames.CODEFORCES).historyStartReached()).isTrue();
         assertThat(account.collectionStates().get(OjNames.CODEFORCES).lastCollectedAt()).isEqualTo(FETCHED_AT);
     }
 
@@ -462,6 +462,21 @@ class CodeforcesSubmissionCollectionServiceTest {
                     existing.username(),
                     existing.handles(),
                     needCollect,
+                    existing.collectionStates(),
+                    existing.createdAt(),
+                    existing.updatedAt()
+            ));
+        }
+
+        private void clearCollectionState(String username, String ojName) {
+            OjHandleAccount existing = accountsByIdentity.get(username);
+            Map<String, OjHandleCollectionState> states = new LinkedHashMap<>(existing.collectionStates());
+            states.put(ojName, OjHandleCollectionState.empty());
+            accountsByIdentity.put(username, new OjHandleAccount(
+                    existing.username(),
+                    existing.handles(),
+                    existing.needCollect(),
+                    states,
                     existing.createdAt(),
                     existing.updatedAt()
             ));
@@ -476,6 +491,10 @@ class CodeforcesSubmissionCollectionServiceTest {
                     username,
                     handles,
                     needCollect,
+                    handles.keySet().stream().collect(java.util.stream.Collectors.toMap(
+                            ojName -> ojName,
+                            ignored -> new OjHandleCollectionState(FETCHED_AT)
+                    )),
                     Instant.EPOCH,
                     Instant.EPOCH
             );
@@ -510,34 +529,40 @@ class CodeforcesSubmissionCollectionServiceTest {
         }
 
         @Override
-        public OjHandleAccount updateUsernameAndNeedCollect(
-                String oldUsername,
-                String newUsername,
+        public OjHandleAccount replace(
+                String username,
                 Map<String, String> handles,
                 boolean needCollect,
                 Map<String, OjHandleCollectionState> collectionStates,
                 Instant updatedAt
         ) {
-            OjHandleAccount existing = accountsByIdentity.remove(oldUsername);
+            OjHandleAccount existing = accountsByIdentity.get(username);
             OjHandleAccount updated = new OjHandleAccount(
-                    newUsername,
+                    username,
                     handles,
                     needCollect,
                     collectionStates,
                     existing.createdAt(),
                     updatedAt
             );
-            accountsByIdentity.put(newUsername, updated);
+            accountsByIdentity.put(username, updated);
             return updated;
         }
 
         @Override
-        public OjHandleAccount updateCollectionStates(
-                String username,
-                Map<String, OjHandleCollectionState> collectionStates,
+        public boolean updateLastCollectedAtByHandle(
+                String ojName,
+                String handle,
+                Instant lastCollectedAt,
                 Instant updatedAt
         ) {
-            OjHandleAccount existing = accountsByIdentity.get(username);
+            OjHandleAccount existing = findByHandle(ojName, handle).orElse(null);
+            if (existing == null) {
+                return false;
+            }
+            Map<String, OjHandleCollectionState> collectionStates =
+                    new java.util.LinkedHashMap<>(existing.collectionStates());
+            collectionStates.put(OjNames.normalize(ojName), new OjHandleCollectionState(lastCollectedAt));
             OjHandleAccount updated = new OjHandleAccount(
                     existing.username(),
                     existing.handles(),
@@ -546,8 +571,8 @@ class CodeforcesSubmissionCollectionServiceTest {
                     existing.createdAt(),
                     updatedAt
             );
-            accountsByIdentity.put(username, updated);
-            return updated;
+            accountsByIdentity.put(existing.username(), updated);
+            return true;
         }
     }
 

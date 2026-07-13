@@ -24,8 +24,8 @@ public class TrainingDataQueryController {
     }
 
     @GetMapping("/users")
-    public Result users() {
-        return Result.ok("获取成功", trainingUserQueryService.listCollectableUsers());
+    public Result users(@RequestParam(value = "includeRetired", defaultValue = "false") boolean includeRetired) {
+        return Result.ok("获取成功", trainingUserQueryService.listUsers(includeRetired));
     }
 
     @GetMapping("/accepted-summary")
@@ -39,6 +39,20 @@ public class TrainingDataQueryController {
     ) {
         return Result.ok("获取成功", queryFacade.summarizeAcceptedProblems(
                 ojName, username, acceptedFromDateUtcPlus8, acceptedToDateUtcPlus8,
+                minProblemRating, maxProblemRating));
+    }
+
+    @GetMapping("/accepted-summaries")
+    public Result acceptedSummaries(
+            @RequestParam(value = "ojName", defaultValue = OjNames.CODEFORCES) String ojName,
+            @RequestParam(value = "includeRetired", defaultValue = "false") boolean includeRetired,
+            @RequestParam(required = false) String acceptedFromDateUtcPlus8,
+            @RequestParam(required = false) String acceptedToDateUtcPlus8,
+            @RequestParam(required = false) Integer minProblemRating,
+            @RequestParam(required = false) Integer maxProblemRating
+    ) {
+        return Result.ok("获取成功", queryFacade.summarizeAcceptedProblems(
+                ojName, includeRetired, acceptedFromDateUtcPlus8, acceptedToDateUtcPlus8,
                 minProblemRating, maxProblemRating));
     }
 

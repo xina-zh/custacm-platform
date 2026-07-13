@@ -11,7 +11,7 @@ import type {
 } from '../types';
 import { authHeaders, requestData } from './client';
 
-type QueryValue = string | number | null | undefined;
+type QueryValue = string | number | boolean | null | undefined;
 
 function withQuery(path: string, query: Record<string, QueryValue>): string {
   const search = new URLSearchParams();
@@ -41,9 +41,12 @@ function authenticatedGet<T>(token: string, path: string, signal?: AbortSignal):
 
 export function listTrainingUsers(
   token: string,
+  includeRetired = false,
   signal?: AbortSignal,
 ): Promise<TrainingUser[]> {
-  return authenticatedGet(token, '/player/training-data/users', signal);
+  return authenticatedGet(token, withQuery('/player/training-data/users', {
+    includeRetired: includeRetired ? true : undefined,
+  }), signal);
 }
 
 export function getAcceptedSummary(
@@ -56,6 +59,23 @@ export function getAcceptedSummary(
   return authenticatedGet(token, withQuery('/player/training-data/accepted-summary', {
     ojName,
     username,
+    acceptedFromDateUtcPlus8: range.acceptedFromDateUtcPlus8,
+    acceptedToDateUtcPlus8: range.acceptedToDateUtcPlus8,
+    minProblemRating: range.minProblemRating,
+    maxProblemRating: range.maxProblemRating,
+  }), signal);
+}
+
+export function getAcceptedSummaries(
+  token: string,
+  range: TrainingQueryRange,
+  ojName: OjName,
+  includeRetired = false,
+  signal?: AbortSignal,
+): Promise<AcceptedSummary[]> {
+  return authenticatedGet(token, withQuery('/player/training-data/accepted-summaries', {
+    ojName,
+    includeRetired: includeRetired ? true : undefined,
     acceptedFromDateUtcPlus8: range.acceptedFromDateUtcPlus8,
     acceptedToDateUtcPlus8: range.acceptedToDateUtcPlus8,
     minProblemRating: range.minProblemRating,
