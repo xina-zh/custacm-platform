@@ -3,6 +3,8 @@
 - `upstream/nblog/blog-api` 是根 Maven reactor 中唯一可运行后端，负责 Blog、评论、首页图片、BCrypt 账号、HS512 JWT、`username`、`ROLE_admin`/`ROLE_player`、OJ handle 和训练数据 HTTP adapter。
 - 对外只有一个 Nginx `frontend` 服务和一个站点；源码中仍有 Blog 与 Training 两份 Vue 3 构建。Blog 位于 `/`，并持有 `/training/**` 外层路由和唯一 `Nav.vue`；Training 运行时内部挂载在 `/training-app/**`。不要合并两个 Router，也不要显示第二条顶栏。
 - 两份 Vue 构建共享 `custacm.theme=light|dark`；无显式值时跟随系统偏好。Blog 顶栏以太阳/月亮拨杆作为生产环境唯一主题入口，Training 通过同源存储事件和受校验的 frame 消息同步；Blog 文章与实时编辑器的代码块在日间使用浅色语法主题、深夜恢复高对比度深色主题。深夜模式仅以 260ms 统一轻度降低业务图片亮度/饱和度，不得反色或覆盖成功/警告/危险语义，减少动态效果偏好下立即切换。
+- `blog-view/src/assets/css/tokens.css` 是根共享视觉 token 的生成副本，禁止手工编辑；由 `main.js` 在基础样式前加载，Blog 视觉覆盖集中在 `blog-redesign.css`，`night.css` 仍作为最后一层暗色覆盖。
+- Blog 保留 Element Plus 并通过全局 `AppIcon` 使用 Lucide；Semantic UI 已退出。页面结构只能使用项目自有布局 class，不得重新导入 Semantic UI CSS 或旧图标字体。
 - Blog 桌面三栏布局的左右侧栏在到达固定顶栏下方后整列吸附，并受主内容网格和页脚边界约束；侧栏高于可视区时允许自身纵向滚动。文章页右栏必须优先展示目录，首页、个人页及列表页继续吸附头像、精选文章与标签云。移动端仍隐藏两侧栏。
 - 浏览器 API 统一从 `/api/**` 进入 Nginx，Blog API 的直接路径不带 `/api`。公开 Vue 请求不得通过全局拦截器附加共享 JWT；受保护请求由对应 adapter 显式携带 Bearer token。
 - `/login` 按规范化 username 使用 Redis 原子五秒窗口：正确凭据释放占位，首次错误返回 401 与 `Retry-After: 5`，窗口内重复请求返回 429，Redis 不可用时失败关闭。Training 登录按钮必须消费服务端 `Retry-After` 展示倒计时，不能只做可绕过的前端延迟。

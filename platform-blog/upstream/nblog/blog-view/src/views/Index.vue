@@ -8,16 +8,16 @@
 
 		<div v-else class="main">
 			<div class="m-padded-tb-big">
-				<div class="ui container">
-					<div class="ui stackable grid main-grid">
+				<div class="site-container">
+					<div class="main-grid">
 						<!--左侧-->
-						<div class="three wide column m-mobile-hide sidebar-column">
+						<div class="m-mobile-hide sidebar-column">
 							<aside class="sticky-sidebar sticky-sidebar-left" aria-label="个人资料">
 								<Introduction :author-username="articleAuthor?.username || ''" :author-summary="articleAuthor" :class="{'m-display-none':focusMode}"/>
 							</aside>
 						</div>
 						<!--中间-->
-						<div class="ten wide column">
+						<div class="main-content-column">
 							<router-view v-slot="{ Component }">
 								<keep-alive include="Home">
 									<component :is="Component" @article-author-change="articleAuthor = $event"/>
@@ -25,7 +25,7 @@
 							</router-view>
 						</div>
 						<!--右侧-->
-						<div class="three wide column m-mobile-hide sidebar-column">
+						<div class="m-mobile-hide sidebar-column">
 							<aside class="sticky-sidebar sticky-sidebar-right" aria-label="内容导航">
 								<!--文章页优先展示目录；其它侧栏内容跟随同一吸附容器。-->
 								<Tocbot v-if="$route.name==='blog'"/>
@@ -82,7 +82,7 @@
 				if (this.$route.name !== 'training') return true
 				const value = this.$route.params.trainingPath
 				const trainingPath = Array.isArray(value) ? value.join('/') : (value || '')
-				return !trainingPath.startsWith('admin')
+				return trainingPath !== 'login' && !trainingPath.startsWith('admin')
 			}
 		},
 		watch: {
@@ -149,7 +149,7 @@
 		flex: 1;
 	}
 
-	.main .ui.container {
+	.main .site-container {
 		box-sizing: border-box;
 		width: min(1400px, 100%) !important;
 		max-width: 100% !important;
@@ -157,12 +157,15 @@
 		margin-right: auto !important;
 	}
 
-	.main .ui.grid > .column {
+	.main .main-grid > :is(.sidebar-column, .main-content-column) {
 		min-width: 0;
 	}
 
 	.main-grid {
+		display: grid;
+		grid-template-columns: minmax(0, 3fr) minmax(0, 10fr) minmax(0, 3fr);
 		align-items: stretch;
+		gap: 2rem;
 	}
 
 	.sidebar-column {
@@ -193,11 +196,11 @@
 		background: rgba(86, 96, 106, .56);
 	}
 
-	.ui.grid .three.column {
+	.main-grid .sidebar-column {
 		padding: 0;
 	}
 
-	.ui.grid .ten.column {
+	.main-grid .main-content-column {
 		padding-top: 0;
 	}
 
@@ -206,6 +209,11 @@
 	}
 
 	@media screen and (max-width: 767px) {
+		.main-grid {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 0;
+		}
+
 		.sticky-sidebar {
 			position: static;
 			max-height: none;

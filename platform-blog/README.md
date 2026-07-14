@@ -14,7 +14,7 @@
 ## 模块职责
 
 - `upstream/nblog/blog-api`：唯一 Spring Boot 后端，统一提供 Blog、评论、首页图片、认证、账号/OJ handle 和训练数据 HTTP API。
-- `upstream/nblog/blog-view`：公开 Blog，页面范围为首页、文章、分类、标签、个人主页和写作页；About、Friends、Moments 页面及其后端链路已移除。
+- `upstream/nblog/blog-view`：公开 Blog，页面范围为首页、文章、分类、标签、个人主页和写作页；保留 Element Plus、使用 Lucide 和项目自有布局，Semantic UI 已退出；About、Friends、Moments 页面及其后端链路已移除。
 - `../frontend`：训练查询与账号、文章、分类/标签、采集和首页图片管理。
 
 Blog API 负责 BCrypt 密码、HS512 JWT、`ROLE_admin`/`ROLE_player`、`sub=username`，并在进程内组装训练模块。管理员账号编辑统一使用 `PUT /admin/users/{username}`：账号字段、改名、角色、密码、完整 handle 集合和采集状态在同一事务内更新；移除或更换 handle 前先清理对应 OJ 数据。

@@ -1,18 +1,18 @@
 <template>
 	<div>
-		<div class="ui padded attached segment m-padded-tb-large m-margin-bottom-big m-box blog-list-card" v-for="item in blogList" :key="item.id">
-			<div class="ui large red right corner label" v-if="item.top">
-				<i class="arrow alternate circle up icon"></i>
+		<div class="content-panel m-padded-tb-large m-margin-bottom-big m-box blog-list-card" v-for="item in blogList" :key="item.id">
+			<div class="featured-corner-mark" v-if="item.top" aria-label="置顶文章">
+				<AppIcon name="arrow-up-circle" />
 			</div>
-			<div class="ui middle aligned mobile reversed stackable">
-				<div class="ui grid m-margin-lr">
+			<div class="blog-list-content">
+				<div class="blog-list-grid m-margin-lr">
 					<div class="list-card-layout">
 						<div class="list-card-main">
-							<h2 class="ui header list-card-title m-scaleup">
+							<h2 class="list-card-title m-scaleup">
 								<a href="javascript:;" :title="item.title" @click.prevent="toBlog(item)" class="m-black">{{ item.title }}</a>
 							</h2>
-							<router-link :to="`/category/${item.category.name}`" class="ui large ribbon label list-card-category" :style="taxonomyStyle(item.category.color)">
-								<i class="small folder open icon"></i><span class="m-text-500">{{ item.category.name }}</span>
+							<router-link :to="`/category/${item.category.name}`" class="category-ribbon list-card-category" :style="taxonomyStyle(item.category.color)">
+								<AppIcon name="folder" /><span class="m-text-500">{{ item.category.name }}</span>
 							</router-link>
 							<div class="typo line-numbers match-braces rainbow-braces list-card-description" v-lazy-container="{selector: 'img'}" v-viewer v-html="sanitizeHtml(item.description)"></div>
 							<div class="list-card-action">
@@ -29,9 +29,9 @@
 									</div>
 								</div>
 								<div class="list-article-meta" aria-label="文章信息">
-									<span class="list-article-date"><i class="calendar outline icon"></i>{{ $filters.dateFormat(item.createTime, 'YYYY-MM-DD')}}</span>
+									<span class="list-article-date"><AppIcon name="calendar" />{{ $filters.dateFormat(item.createTime, 'YYYY-MM-DD')}}</span>
 									<span class="list-article-stats">
-										<span><i class="file alternate outline icon"></i>{{ item.words }} 字</span>
+										<span><AppIcon name="file" />{{ item.words }} 字</span>
 									</span>
 								</div>
 							</div>
@@ -41,11 +41,11 @@
 						</aside>
 					</div>
 					<!--横线-->
-					<div class="ui section divider m-margin-lr-no"></div>
+					<div class="section-divider m-margin-lr-no"></div>
 					<!--标签-->
 					<div class="row m-padded-tb-no">
 						<div class="column m-padding-left-no">
-							<router-link :to="`/tag/${tag.name}`" class="ui tag label m-text-500 m-margin-small" :style="taxonomyStyle(tag.color)" v-for="(tag,index) in item.tags" :key="index">{{ tag.name }}</router-link>
+							<router-link :to="`/tag/${tag.name}`" class="taxonomy-chip m-text-500 m-margin-small" :style="taxonomyStyle(tag.color)" v-for="(tag,index) in item.tags" :key="index">{{ tag.name }}</router-link>
 						</div>
 					</div>
 				</div>
@@ -223,7 +223,7 @@
 		white-space: nowrap;
 	}
 
-	.list-article-meta i {
+	.list-article-meta .app-icon {
 		display: inline-flex !important;
 		width: 1em;
 		height: 1em;

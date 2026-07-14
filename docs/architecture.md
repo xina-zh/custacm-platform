@@ -33,6 +33,8 @@ platform-blog/upstream/nblog/blog-api/
 
 两套应用通过 `custacm.theme` 共享显式 `light`/`dark` 选择；没有有效值时分别跟随系统偏好。两份 HTML 都在应用样式与 Vue 挂载前把有效主题写入根节点以避免白闪，Blog 顶栏以太阳/月亮拨杆负责生产切换，Training 同源 frame 通过存储事件和校验 origin/source/type/value 的消息兜底同步。Blog 文章与实时编辑器代码块在日间使用浅色语法主题，深夜切回高对比度深色主题。深夜视觉采用暖黑橙，但成功、警告、危险及分类/标签业务色保持各自语义；业务图片只以 260ms 轻度降低亮度和饱和度，不反色，减少动态效果偏好下立即切换。
 
+前端视觉改版以 `frontend-design-tokens/tokens.css` 为单一 token 源，通过仓库脚本生成两端构建树内的副本，避免改变当前两个独立 Docker build context。Training 在阶段 2 接入 token、有限玻璃和可降级路由动效；Blog 在阶段 3 接入同一 token、Element Plus 语义变量、有限玻璃和弹层焦点管理，并在阶段 6 将遗留 Semantic UI 布局替换为项目自有 class、把图标统一到 Lucide。两套 Router、主题协议和运行拓扑均不因此变化。
+
 Blog 顶栏“训练中心”与“分类”一致采用点击开关型下拉菜单：点击标题只展开或收起，悬停不展示，选择多人、单人或题目查询项后才发生路由跳转。
 
 Vue Blog 的公开请求不全局附加 JWT。文章列表、分类、标签、搜索和精选读取仅在存在共享会话时由具体 API adapter 显式发送 Bearer，使登录用户获得内部文章；受保护写入、内部文章正文读取和文章图片 ZIP 下载同样由具体 adapter 发送 token。训练中心的 `/player/**`、`/admin/**` 请求也采用相同方式。
