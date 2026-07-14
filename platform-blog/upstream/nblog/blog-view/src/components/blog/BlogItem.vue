@@ -135,10 +135,12 @@
 		min-width: 0;
 		gap: 0.75rem;
 		padding: 0.9rem 0.75rem 0.9rem 1rem;
-		background: transparent;
-		border: 2px solid #17324d;
+		background: rgba(255, 255, 255, 0.68);
+		border: 1px solid rgba(23, 50, 77, 0.16);
 		border-radius: 14px;
-		box-shadow: none;
+		box-shadow: 0 10px 28px rgba(23, 50, 77, 0.06);
+		-webkit-backdrop-filter: blur(10px);
+		backdrop-filter: blur(10px);
 	}
 
 	.list-author-identity {
@@ -154,9 +156,9 @@
 		height: 72px;
 		flex: 0 0 72px;
 		object-fit: cover;
-		border: 3px solid #fff;
+		border: 2px solid rgba(255, 255, 255, 0.86);
 		border-radius: 50%;
-		box-shadow: 0 0 0 1px #d5e0e9, 0 6px 16px rgba(23, 50, 77, 0.16);
+		box-shadow: 0 0 0 1px rgba(23, 50, 77, 0.1), 0 6px 18px rgba(23, 50, 77, 0.1);
 	}
 
 	.list-author-copy {

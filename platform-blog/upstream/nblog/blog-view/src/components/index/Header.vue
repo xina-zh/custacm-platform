@@ -289,18 +289,29 @@
 	.wave1, .wave2 {
 		position: absolute;
 		bottom: 0;
+		background-image: none;
+		-webkit-mask-repeat: repeat-x;
+		-webkit-mask-position: left bottom;
+		-webkit-mask-size: auto 100%;
+		mask-repeat: repeat-x;
+		mask-position: left bottom;
+		mask-size: auto 100%;
 		transition-duration: .4s, .4s;
 		z-index: 80;
 	}
 
 	.wave1 {
-		background: url('/img/header/wave1.png') repeat-x;
+		background-color: color-mix(in srgb, var(--home-canvas, var(--color-canvas-alternate)) 72%, transparent);
+		-webkit-mask-image: url('/img/header/wave1.png');
+		mask-image: url('/img/header/wave1.png');
 		height: 75px;
 		width: 100%;
 	}
 
 	.wave2 {
-		background: url('/img/header/wave2.png') repeat-x;
+		background-color: var(--home-canvas, var(--color-canvas-alternate));
+		-webkit-mask-image: url('/img/header/wave2.png');
+		mask-image: url('/img/header/wave2.png');
 		height: 90px;
 		width: calc(100% + 100px);
 		left: -100px;

@@ -71,5 +71,7 @@
 </script>
 
 <style scoped>
-
+	.taxonomy-page-heading {
+		margin-bottom: 1.5rem;
+	}
 </style>

@@ -59,7 +59,7 @@ platform-blog/
 | `upstream/nblog/blog-api/src/main/java/top/naccl/service/ArticleRecycleBinService.java` | 七天软删除、本人/管理员恢复与到期事务清理 |
 | `upstream/nblog/blog-api/src/main/resources/db/migration/` | Blog 与训练 schema 的统一 Flyway 迁移 |
 | `upstream/nblog/blog-view/src/router/index.js` | Blog 路由、训练外壳路由和登录转交 |
-| `upstream/nblog/blog-view/src/views/Index.vue` | Blog 三栏外壳；桌面左右侧栏在顶栏下吸附并在页脚前结束 |
+| `upstream/nblog/blog-view/src/views/Index.vue` | Blog 响应式外壳；首页只渲染带页边距的三篇精选文章且不展示普通文章列表或标签云，文章详情使用带作者介绍与目录的三栏 |
 | `upstream/nblog/blog-view/src/views/profile/Profile.vue` | 个人主页、OJ handle 展示、资料/密码/友情链接编辑和本人文章/回收站入口 |
 | `upstream/nblog/blog-view/src/views/article/ArticleEditor.vue` | Markdown 发布/编辑与托管图片上传 |
 | `upstream/nblog/blog-view/src/assets/css/typo.css`、`src/components/article/LiveMarkdownEditor.vue` | 文章阅读区与实时编辑器的日间浅色/深夜高对比度代码语法主题 |
