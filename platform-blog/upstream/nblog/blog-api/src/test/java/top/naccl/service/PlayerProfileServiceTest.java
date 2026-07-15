@@ -15,6 +15,8 @@ import top.naccl.mapper.UserProfileLinkMapper;
 import top.naccl.model.dto.PlayerProfileUpdateRequest;
 import top.naccl.model.dto.ProfileLinkInput;
 import top.naccl.model.dto.ProfileLinksReplaceRequest;
+import top.naccl.model.vo.CompetitionAchievement;
+import top.naccl.model.vo.CompetitionResponse;
 import top.naccl.model.vo.PlayerProfile;
 import top.naccl.model.vo.PublicProfile;
 
@@ -39,13 +41,16 @@ class PlayerProfileServiceTest {
 	private RedisService redisService;
 	@Mock
 	private ImageAssetService imageAssetService;
+	@Mock
+	private CompetitionService competitionService;
 
 	private PlayerProfileService service;
 	private User player;
 
 	@BeforeEach
 	void setUp() {
-		service = new PlayerProfileService(userMapper, linkMapper, redisService, imageAssetService);
+		service = new PlayerProfileService(userMapper, linkMapper, redisService, imageAssetService,
+				competitionService);
 		player = new User();
 		player.setId(7L);
 		player.setUsername("player1");
@@ -60,22 +65,27 @@ class PlayerProfileServiceTest {
 	void returnsCurrentProfileWithOrderedLinks() {
 		UserProfileLink link = link("GitHub", "https://github.com/example", 0);
 		link.setId(12L);
+		CompetitionAchievement achievement = achievement();
 		when(userMapper.findByUsername("player1")).thenReturn(player);
 		when(linkMapper.findByUserId(7L)).thenReturn(List.of(link));
+		when(competitionService.achievements("player1")).thenReturn(List.of(achievement));
 
 		PlayerProfile profile = service.get("player1");
 
 		assertEquals("player1", profile.getUsername());
 		assertEquals("player1@example.com", profile.getEmail());
 		assertEquals("GitHub", profile.getLinks().getFirst().label());
+		assertEquals(List.of(achievement), profile.getAchievements());
 	}
 
 	@Test
 	void returnsPublicProfileWithoutAccountRole() {
 		player.setSignature("保持好奇");
 		UserProfileLink link = link("主页", "https://example.com", 0);
+		CompetitionAchievement achievement = achievement();
 		when(userMapper.findByUsername("player1")).thenReturn(player);
 		when(linkMapper.findByUserId(7L)).thenReturn(List.of(link));
+		when(competitionService.publicAchievements("player1")).thenReturn(List.of(achievement));
 
 		PublicProfile profile = service.getPublic("player1");
 
@@ -83,6 +93,7 @@ class PlayerProfileServiceTest {
 		assertEquals("player1@example.com", profile.getEmail());
 		assertEquals("保持好奇", profile.getSignature());
 		assertEquals("主页", profile.getLinks().getFirst().label());
+		assertEquals(List.of(achievement), profile.getAchievements());
 	}
 
 	@Test
@@ -109,6 +120,20 @@ class PlayerProfileServiceTest {
 
 		assertEquals("", profile.getSignature());
 		verify(redisService, never()).deleteCacheByKey(RedisKeyConstants.HOME_BLOG_INFO_LIST);
+	}
+
+	@Test
+	void rejectsSignatureLongerThanFortyCharacters() {
+		when(userMapper.findByUsername("player1")).thenReturn(player);
+
+		BadRequestException exception = assertThrows(BadRequestException.class,
+				() -> service.update("player1", new PlayerProfileUpdateRequest(null, "签".repeat(41))));
+
+		assertEquals("个性签名不能超过 40 个字符", exception.getMessage());
+		verify(userMapper, never()).updateProfileByUsername(
+				org.mockito.ArgumentMatchers.any(),
+				org.mockito.ArgumentMatchers.any(),
+				org.mockito.ArgumentMatchers.any());
 	}
 
 	@Test
@@ -172,5 +197,31 @@ class PlayerProfileServiceTest {
 		link.setUrl(url);
 		link.setSortOrder(sortOrder);
 		return link;
+	}
+
+	private static CompetitionAchievement achievement() {
+		return new CompetitionAchievement(
+				31L,
+				"2025 年中国高校计算机大赛-团体程序设计天梯赛",
+				2025,
+				"GPLT_NATIONAL",
+				"GPLT 团体程序设计天梯赛（国赛）",
+				List.of(new CompetitionResponse.Type("GPLT", "团体程序设计天梯赛")),
+				41L,
+				"FIRST_PRIZE",
+				"一等奖",
+				"INDIVIDUAL",
+				"个人",
+				null,
+				"NATIONAL",
+				"国家级",
+				1,
+				"一等奖",
+				null,
+				null,
+				null,
+				true,
+				1L
+		);
 	}
 }
